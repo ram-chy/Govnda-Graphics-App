@@ -1,0 +1,46 @@
+# Virtual environments
+.venv/
+venv/
+
+# Python bytecode and caches
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.coverage
+.coverage.*
+htmlcov/
+
+# Build and packaging output
+build/
+dist/
+*.spec.bak
+
+# Local logs and databases (runtime data lives outside the repository)
+*.log
+*.log.*
+*.db
+*.db-wal
+*.db-shm
+*.sqlite
+*.sqlite3
+
+# Local environment / editor files
+.env
+.env.*
+.idea/
+.vscode/
+*.swp
+*~
+
+# Windows metadata
+Thumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+
+# Temporary files
+*.tmp
+~$*
