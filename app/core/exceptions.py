@@ -50,6 +50,10 @@ class ConflictError(AppError):
     """A uniqueness or concurrency conflict occurred."""
 
 
+class SetupError(AppError):
+    """First-launch setup could not complete safely."""
+
+
 class DatabaseUnavailableError(AppError):
     """The configured database cannot be opened or reached."""
 

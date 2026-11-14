@@ -3,9 +3,9 @@
 | Field | Value |
 | --- | --- |
 | Document | DEVELOPMENT_ROADMAP.md |
-| Version | 1.0 |
-| Date | 2026-11-12 |
-| Status | Draft for review |
+| Version | 1.1 |
+| Date | 2026-11-14 |
+| Status | Phases 0–3 complete; Phase 4 awaiting authorization |
 | Related | BLUEPRINT.md, ARCHITECTURE.md, DATABASE_SCHEMA.md, BACKUP_STRATEGY.md |
 
 ## 1. Principles
@@ -118,67 +118,94 @@ DoD:
 
 ### Phase 2 — SQLite, SQLAlchemy, and Alembic foundation
 
+**Status: Complete (2026-11-13).** Report: `Reports/PHASE_02_REPORT.md`.
+
 Goal: a schema that can be created and upgraded safely, with no business tables yet beyond platform scaffolding.
 
 Work:
 
-- Engine factory with the PRAGMAs from ADR-008 and a `connect` event.
-- Naming convention, declarative base, metadata.
-- `UnitOfWork` and session factory; repository protocol base.
-- Alembic programmatic setup, `render_as_batch=True`, initial revision with `app_settings` / `business_profile` / `alembic_version` only (or an empty baseline — decide and document).
-- Migration runner used at startup and by a CLI (`python -m app.tools.migrate`).
-- Integrity checks (`quick_check`, `foreign_key_check`) as reusable functions.
-- Test fixtures: temp-file DB, applied migrations, rollback isolation.
-- Startup refuse-newer-schema / backup-before-upgrade logic is stubbed and tested with fake revisions.
+- [x] Engine factory with the PRAGMAs from ADR-008 and a `connect` event.
+- [x] Naming convention, declarative base, metadata.
+- [x] `UnitOfWork` and session factory; repository protocol base.
+- [x] Alembic programmatic setup, `render_as_batch=True`; an **empty baseline** was chosen and documented (`0001_baseline`: identity PRAGMAs only, no `app_settings`/`business_profile`).
+- [x] Migration runner used by a CLI (`python -m app.tools.migrate`); startup inspection and refusal policy are implemented, automatic upgrade awaits Phase 4.
+- [x] Integrity checks (`quick_check`, `foreign_key_check`) as reusable functions.
+- [x] Test fixtures: temp-file DB, applied migrations, rollback isolation.
+- [x] Startup refuse-newer-schema logic; pending revisions are refused rather than upgraded until the Phase 4 safety backup exists.
 
 Deliverables:
 
-- A temp DB can be created, migrated to head, inspected, and upgraded in tests.
-- SQLAlchemy sessions are never shared across threads (test or lint rule).
-- Schema revision is visible in logs and the About dialog.
+- [x] A temp DB can be created, migrated to head, inspected, and upgraded in tests.
+- [x] SQLAlchemy sessions are never shared across threads (bounded pool + documented policy + tests).
+- [x] Schema revision is visible in startup logs. A UI About surface remains future work.
 
 DoD:
 
-- [ ] Migration from empty → head is deterministic.
-- [ ] Foreign keys are enforced (test a violating insert).
-- [ ] WAL and `synchronous` settings are verified on a real connection.
-- [ ] Failed migration leaves the DB unchanged (transactional DDL test where possible).
-- [ ] Naming conventions produce stable constraint names.
+- [x] Migration from empty → head is deterministic.
+- [x] Foreign keys are enforced (a violating insert is rejected in tests).
+- [x] WAL and `synchronous` settings are verified on a real connection.
+- [x] Failed upgrade leaves the DB unchanged (invalid target revision test; SQLite cannot make all DDL transactional).
+- [x] Naming conventions produce stable constraint names.
 
 **Gate:** database foundation review; approval of the first real schema slice.
 
+**Phase 3 dependencies delivered by Phase 2:**
+
+- Injected absolute `DatabaseConfig` and `AppConfig.database_path` (default `null`).
+- Explicit database creation via `MigrationManager.create_database()`; no implicit creation.
+- Startup identity/revision checks that a future wizard can reuse.
+- `DatabaseDiagnostics` for location validation and health display.
+- No default database path, no C: fallback, and no silent switch to another file.
+
+Phase 3 still owns the folder chooser, write-permission UX, save/validate flow, and
+remembering the selected location.
+
 ### Phase 3 — First-launch setup and database location
+
+**Status: complete (2026-11-14).** Recorded in `Reports/PHASE_03_REPORT.md`.
 
 Goal: the user can choose a data folder, and the app remembers it safely.
 
 Work:
 
-- Setup wizard views/ViewModels: welcome, folder picker, validation results, confirmation, completion.
-- Validation service: path syntax, creatability, write test, free space, drive type, installation-directory refusal, UNC refusal.
+- Setup wizard pages: welcome, folder picker, validation results, directory review, confirmation, initialization progress, completion.
+- Validation service: path syntax, absoluteness, creatability, write probe, read access, free space, drive type, protected-folder refusal, installation-directory refusal, UNC refusal, and drive-root refusal.
 - Data folder scaffolding (`Database`, `Backups/{Automatic,Manual,Safety}`, `Attachments`, `Exports/{PDF,Excel}`).
-- Database initialization + migrations.
-- Atomic config write; config repair flow.
-- Restore-existing-backup branch (can be a placeholder that validates and stages until Phase 4 if necessary; do not fake it).
-- Missing-drive handling at startup (blocking state).
-- Business profile setup (minimum confirmed fields only).
+- Database initialization through the Phase 2 migration manager, plus safe adoption of an existing healthy database.
+- Atomic config write of `data_root` and `database_path`; configuration repair flow.
+- Missing-drive, corrupt-config, and incomplete-config recovery with Retry / Locate existing data / Start new setup / Exit.
 - Logging of path decisions without leaking sensitive content.
+- Restore existing backup remains Phase 4 work and was deliberately not faked.
+- Business-profile setup remains deferred because no field list is approved.
 
 Deliverables:
 
-- First launch on a clean profile works on D: and on a removable drive (tested).
+- First launch on a clean profile works on a local fixed or removable drive (tested with mocked drive APIs).
 - The selected path survives restart and is not stored inside the data folder.
-- No fallback to C: ever occurs.
+- No fallback to C: occurs.
 
 DoD:
 
-- [ ] Permission-denied, nonexistent, read-only, UNC, and installation-folder paths are rejected with clear messages.
-- [ ] Free-space check works (mock a low-space condition).
-- [ ] Config is written only after the DB is created and verified.
-- [ ] A corrupt config does not delete or move business data.
-- [ ] Missing drive blocks startup and offers Retry/Locate/Exit.
-- [ ] Tests cover validation and config atomicity.
+- [x] Permission-denied, nonexistent, read-only, UNC, drive-root, and installation-folder paths are rejected with clear messages.
+- [x] Free-space check works (mock a low-space condition).
+- [x] Config is written only after the DB is created and verified.
+- [x] A corrupt config does not delete or move business data.
+- [x] Missing drive blocks startup and offers Retry/Locate/New setup/Exit.
+- [x] Tests cover validation and config atomicity.
 
 **Gate:** end-to-end first-run demo; approval for backup implementation.
+
+**Phase 4 dependencies delivered by Phase 3:**
+
+- A verified data root containing `Database`, `Backups/{Automatic,Manual,Safety}`,
+  `Attachments`, and `Exports/{PDF,Excel}`.
+- `AppConfig.data_root` and the explicit absolute `AppConfig.database_path`.
+- A verified, open `Database` lifecycle and clean shutdown path.
+- Startup setup/recovery classification and a blocking recovery dialog that
+  already never falls back to another path.
+- The existing location validator for a future backup-destination check.
+- No restore action, no backup field, and no scheduling claim is present in
+  Phase 3; Phase 4 must add them.
 
 ### Phase 4 — Backup, restore, and scheduled runner
 
@@ -532,4 +559,16 @@ A deliverable is done only when:
 
 ## 10. Immediate next step
 
-Phase 1 is complete (2026-11-13) and recorded in `Reports/PHASE_01_REPORT.md`. The owner confirmed INR as the default currency, and the affected documentation was reconciled on 2026-11-13. Review the report and authorize **Phase 2 — SQLite, SQLAlchemy, and Alembic foundation**. Do not start Phase 2 without explicit approval.
+Phase 1 is complete (2026-11-13), Phase 2 (SQLite/SQLAlchemy/Alembic foundation)
+is complete (2026-11-13), and Phase 3 (first-launch setup and database location)
+is complete (2026-11-14). They are recorded in `Reports/PHASE_01_REPORT.md`,
+`Reports/PHASE_02_REPORT.md`, and `Reports/PHASE_03_REPORT.md`. The owner
+confirmed INR as the default currency, and the affected documentation was
+reconciled on 2026-11-13.
+
+Review the Phase 3 report and explicitly authorize **Phase 4 — Backup, restore,
+and scheduled runner**. Do not start Phase 4 without approval. Phase 4 depends on
+the verified Phase 3 data root, configuration paths, database lifecycle, and
+startup recovery flow. It must add the Online Backup API snapshot, verification,
+retention, restore staging, and the pre-upgrade safety backup; it must not fake a
+restore or weaken the no-fallback rule.

@@ -1,8 +1,9 @@
-"""Phase 1 dashboard foundation."""
+"""Dashboard foundation for the desktop shell."""
 
 from __future__ import annotations
 
 from decimal import Decimal
+from pathlib import Path
 
 from PySide6.QtWidgets import QGridLayout, QLabel, QVBoxLayout, QWidget
 
@@ -14,15 +15,24 @@ from app.ui.themes.tokens import METRICS
 
 
 class HomeView(QWidget):
-    """Static foundation status screen.
+    """Static status screen for the verified foundation phases.
 
-    It reports verified Phase 1 facts only. No business metrics, sample
-    transactions, or placeholder financial data are shown.
+    It reports only facts the application has actually verified. No business
+    metrics, sample transactions, or placeholder financial data are shown.
     """
 
-    def __init__(self, config: AppConfig, parent: QWidget | None = None) -> None:
+    def __init__(
+        self,
+        config: AppConfig,
+        parent: QWidget | None = None,
+        *,
+        database_path: Path | None = None,
+        data_root: Path | None = None,
+    ) -> None:
         super().__init__(parent)
         self.setObjectName("ContentArea")
+        self._database_path = database_path
+        self._data_root = data_root
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(
@@ -34,11 +44,18 @@ class HomeView(QWidget):
         layout.setSpacing(METRICS.space_5)
 
         status_card = SectionCard("Application foundation is running", self)
-        status_card.add_body(
-            "The desktop shell, configuration service, logging, theme switching, "
-            "and INR currency formatting are active. Business modules and the "
-            "database layer are intentionally not part of this phase."
-        )
+        if database_path is None:
+            status_card.add_body(
+                "The desktop shell, configuration service, logging, theme switching, "
+                "and INR currency formatting are active. No business data location "
+                "has been configured yet."
+            )
+        else:
+            status_card.add_body(
+                "The desktop shell, configuration service, logging, theme switching, "
+                "and INR currency formatting are active. The SQLite business database "
+                "was verified at startup."
+            )
         layout.addWidget(status_card)
 
         details = QGridLayout()
@@ -55,21 +72,50 @@ class HomeView(QWidget):
             0,
             1,
         )
-        details.addWidget(
-            self._info_card("Storage mode", "Local and offline", "No database configured yet"),
-            0,
-            2,
-        )
+        if database_path is None:
+            details.addWidget(
+                self._info_card(
+                    "Data location",
+                    "Not configured",
+                    "Start the application normally to run first-launch setup.",
+                ),
+                0,
+                2,
+            )
+        else:
+            details.addWidget(
+                self._info_card(
+                    "Data location",
+                    "Configured",
+                    str(data_root) if data_root is not None else str(database_path.parent),
+                ),
+                0,
+                2,
+            )
         details.setColumnStretch(0, 1)
         details.setColumnStretch(1, 1)
         details.setColumnStretch(2, 1)
         layout.addLayout(details)
 
+        storage_card = SectionCard("Business database", self)
+        if database_path is None:
+            storage_card.add_body(
+                "The live database is created only by the first-launch setup wizard. "
+                "The application never invents a path and never creates a fallback "
+                "database."
+            )
+        else:
+            storage_card.add_body(f"Database file: {database_path}")
+            storage_card.add_body(
+                "Startup verification checks the file identity, schema revision, and "
+                "SQLite header before the business interface opens."
+            )
+        layout.addWidget(storage_card)
+
         next_card = SectionCard("Next phase", self)
         next_card.add_body(
-            "Phase 2 adds the SQLite database, SQLAlchemy engine, and Alembic "
-            "migration foundation. Business data will not be created until the "
-            "setup and backup phases are complete."
+            "Phase 4 adds verified safety backups, restore, and the backup schedule. "
+            "Business modules remain intentionally unavailable until their phases."
         )
         layout.addWidget(next_card)
         layout.addStretch(1)

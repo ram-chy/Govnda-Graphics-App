@@ -222,6 +222,171 @@ QMessageBox QLabel {
 QMessageBox QPushButton {
     min-width: 72px;
 }
+
+QDialog#SetupWizard,
+QDialog#RecoveryDialog,
+QWidget#WizardPage {
+    background-color: $bg_app;
+}
+
+QFrame#WizardHeader {
+    background-color: $bg_surface;
+    border-bottom: 1px solid $border_default;
+}
+
+QLabel#WizardTitle {
+    font-size: 22px;
+    font-weight: 600;
+}
+
+QLabel#WizardSubtitle {
+    color: $text_secondary;
+    font-size: 13px;
+}
+
+QLabel#WizardStep {
+    color: $text_secondary;
+    font-size: 12px;
+    font-weight: 600;
+}
+
+QLabel#WizardBody {
+    font-size: 13px;
+}
+
+QLabel#WizardPath {
+    font-family: $mono_font_family;
+    font-size: 12px;
+    background-color: $bg_surface_alt;
+    border: 1px solid $border_default;
+    border-radius: ${radius_input}px;
+    padding: 6px 8px;
+}
+
+QLabel#WizardError {
+    color: $danger;
+    font-weight: 600;
+}
+
+QLabel#WizardSuccess {
+    color: $success;
+    font-weight: 600;
+}
+
+QLabel[checkStatus="pass"] {
+    color: $success;
+    font-weight: 600;
+}
+
+QLabel[checkStatus="warning"] {
+    color: $warning;
+    font-weight: 600;
+}
+
+QLabel[checkStatus="error"] {
+    color: $danger;
+    font-weight: 600;
+}
+
+QLabel[checkStatus="info"] {
+    color: $info;
+    font-weight: 600;
+}
+
+QFrame[validationRow="true"] {
+    background-color: $bg_surface;
+    border: 1px solid $border_default;
+    border-radius: ${radius_input}px;
+}
+
+QLineEdit {
+    background-color: $bg_surface;
+    color: $text_primary;
+    border: 1px solid $border_strong;
+    border-radius: ${radius_input}px;
+    padding: 6px 8px;
+    min-height: 18px;
+}
+
+QLineEdit:focus {
+    border: 2px solid $focus;
+}
+
+QLineEdit:disabled {
+    background-color: $bg_surface_alt;
+    color: $text_disabled;
+}
+
+QTreeWidget {
+    background-color: $bg_surface;
+    alternate-background-color: $bg_surface_alt;
+    border: 1px solid $border_default;
+    border-radius: ${radius_input}px;
+    padding: 4px;
+}
+
+QTreeWidget::item {
+    min-height: 22px;
+}
+
+QCheckBox {
+    spacing: 8px;
+}
+
+QCheckBox::indicator {
+    width: 16px;
+    height: 16px;
+}
+
+QProgressBar {
+    background-color: $bg_surface_alt;
+    border: 1px solid $border_default;
+    border-radius: ${radius_input}px;
+    text-align: center;
+    min-height: 18px;
+}
+
+QProgressBar::chunk {
+    background-color: $primary;
+    border-radius: ${radius_input}px;
+}
+
+QPushButton[secondary="true"] {
+    background-color: transparent;
+    color: $text_primary;
+    border-color: $border_strong;
+}
+
+QPushButton[secondary="true"]:hover {
+    background-color: $bg_surface_alt;
+    border-color: $border_strong;
+}
+
+QPushButton[secondary="true"]:pressed {
+    background-color: $bg_selected;
+}
+
+QPushButton[secondary="true"]:disabled {
+    background-color: transparent;
+    color: $text_disabled;
+    border-color: $border_default;
+}
+
+QPushButton[danger="true"] {
+    background-color: transparent;
+    color: $danger;
+    border-color: $danger;
+}
+
+QPushButton[danger="true"]:hover {
+    background-color: $danger;
+    color: $on_primary;
+}
+
+QPushButton[danger="true"]:pressed {
+    background-color: $danger;
+    color: $on_primary;
+}
 """
 )
 

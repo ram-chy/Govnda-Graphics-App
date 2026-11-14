@@ -10,7 +10,7 @@ from pathlib import Path
 import pytest
 
 from app.core import constants
-from app.core.config import AppConfig, ConfigService
+from app.core.config import AppConfig, ConfigLoadStatus, ConfigService
 from app.core.exceptions import ConfigurationError
 from app.core.formatting import format_money
 
@@ -188,3 +188,170 @@ def test_saving_invalid_config_does_not_touch_file(config_service: ConfigService
         config_service.save(invalid)
 
     assert config_service.config_path.read_text(encoding="utf-8") == original
+
+
+def test_database_path_defaults_to_none() -> None:
+    assert AppConfig().database_path is None
+
+
+def test_absolute_database_path_is_accepted_and_round_trips(
+    config_service: ConfigService, tmp_path: Path
+) -> None:
+    database_path = tmp_path / "data" / "gobindas.db"
+    config_service.save(AppConfig(database_path=str(database_path)))
+
+    loaded = config_service.load()
+
+    assert loaded.database_path == str(database_path)
+    assert loaded == AppConfig(database_path=str(database_path))
+
+
+def test_relative_database_path_is_rejected() -> None:
+    with pytest.raises(ConfigurationError, match="absolute"):
+        AppConfig(database_path="data/gobindas.db").validate()
+
+
+def test_blank_database_path_is_rejected() -> None:
+    with pytest.raises(ConfigurationError, match="non-empty"):
+        AppConfig(database_path="   ").validate()
+
+
+def test_null_database_path_in_json_is_accepted(config_service: ConfigService) -> None:
+    config_service.config_path.parent.mkdir(parents=True)
+    config_service.config_path.write_text('{"schema_version": 1, "database_path": null}')
+
+    assert config_service.load().database_path is None
+
+
+def test_data_root_and_database_path_round_trip(
+    config_service: ConfigService, tmp_path: Path
+) -> None:
+    root = tmp_path / "Business"
+    database_path = root / "Database" / "BusinessManagement.db"
+    config = AppConfig(
+        theme="light",
+        data_root=str(root),
+        database_path=str(database_path),
+    )
+
+    config_service.save(config)
+    loaded = config_service.load()
+
+    assert loaded == config
+    assert loaded.data_root == str(root)
+    assert loaded.database_path == str(database_path)
+    assert loaded.currency_code == "INR"
+    assert loaded.currency_symbol == "\u20b9"
+    assert loaded.currency_decimal_places == 2
+
+
+def test_legacy_config_with_only_database_path_remains_valid(
+    config_service: ConfigService, tmp_path: Path
+) -> None:
+    database_path = tmp_path / "data" / "legacy.db"
+    config_service.config_path.parent.mkdir(parents=True)
+    config_service.config_path.write_text(
+        json.dumps({"schema_version": 1, "database_path": str(database_path)}),
+        encoding="utf-8",
+    )
+
+    result = config_service.load_with_status()
+
+    assert result.status is ConfigLoadStatus.LOADED
+    assert result.config.database_path == str(database_path)
+    assert result.config.data_root is None
+
+
+def test_null_data_root_in_json_is_accepted(config_service: ConfigService) -> None:
+    config_service.config_path.parent.mkdir(parents=True)
+    config_service.config_path.write_text('{"schema_version": 1, "data_root": null}')
+
+    assert config_service.load().data_root is None
+
+
+def test_load_with_status_reports_missing_without_creating_the_file(
+    config_service: ConfigService,
+) -> None:
+    result = config_service.load_with_status()
+
+    assert result.status is ConfigLoadStatus.MISSING
+    assert result.config == AppConfig()
+    assert result.quarantined_path is None
+    assert not config_service.config_path.exists()
+
+
+def test_load_with_status_reports_a_loaded_file(
+    config_service: ConfigService,
+) -> None:
+    config_service.save(AppConfig(theme="light"))
+
+    result = config_service.load_with_status()
+
+    assert result.status is ConfigLoadStatus.LOADED
+    assert result.config.theme == "light"
+    assert result.quarantined_path is None
+
+
+def test_load_with_status_reports_recovered_configuration(
+    config_service: ConfigService,
+) -> None:
+    config_service.config_path.parent.mkdir(parents=True)
+    config_service.config_path.write_text('{"theme": "neon"}', encoding="utf-8")
+
+    result = config_service.load_with_status()
+
+    assert result.status is ConfigLoadStatus.RECOVERED
+    assert result.config == AppConfig()
+    assert result.quarantined_path is not None
+    assert result.quarantined_path.is_file()
+    assert result.quarantined_path.read_text(encoding="utf-8") == '{"theme": "neon"}'
+    assert not config_service.config_path.exists()
+
+
+def test_database_path_outside_data_root_is_rejected(tmp_path: Path) -> None:
+    config = AppConfig(
+        data_root=str(tmp_path / "Business"),
+        database_path=str(tmp_path / "Elsewhere" / "BusinessManagement.db"),
+    )
+
+    with pytest.raises(ConfigurationError, match="inside data_root"):
+        config.validate()
+
+
+def test_with_database_location_preserves_existing_settings(tmp_path: Path) -> None:
+    root = tmp_path / "Business"
+    database_path = root / "Database" / "BusinessManagement.db"
+    config = AppConfig(theme="dark", log_level="DEBUG")
+
+    updated = config.with_database_location(data_root=root, database_path=database_path)
+
+    assert updated.data_root == str(root)
+    assert updated.database_path == str(database_path)
+    assert updated.theme == "dark"
+    assert updated.log_level == "DEBUG"
+    assert updated.currency_code == "INR"
+    assert updated.currency_symbol == "\u20b9"
+    assert config.data_root is None
+    assert config.database_path is None
+
+
+def test_with_database_location_rejects_a_database_outside_the_root(
+    tmp_path: Path,
+) -> None:
+    config = AppConfig()
+
+    with pytest.raises(ConfigurationError, match="inside data_root"):
+        config.with_database_location(
+            data_root=tmp_path / "Business",
+            database_path=tmp_path / "Outside" / "BusinessManagement.db",
+        )
+
+
+def test_relative_data_root_is_rejected() -> None:
+    with pytest.raises(ConfigurationError, match="absolute"):
+        AppConfig(data_root="Business").validate()
+
+
+def test_blank_data_root_is_rejected() -> None:
+    with pytest.raises(ConfigurationError, match="non-empty"):
+        AppConfig(data_root="   ").validate()

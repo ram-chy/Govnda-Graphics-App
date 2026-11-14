@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+from pathlib import Path
 
 from PySide6.QtGui import QCloseEvent
 from PySide6.QtWidgets import (
@@ -78,11 +79,15 @@ class MainWindow(QMainWindow):
         theme_manager: ThemeManager,
         *,
         app_version: str = constants.APP_VERSION,
+        database_path: Path | None = None,
+        data_root: Path | None = None,
         parent: QWidget | None = None,
     ) -> None:
         super().__init__(parent)
         self._viewmodel = viewmodel
         self._theme_manager = theme_manager
+        self._database_path = database_path
+        self._data_root = data_root
         self._views: dict[str, QWidget] = {}
         self._current_key = ""
 
@@ -179,8 +184,14 @@ class MainWindow(QMainWindow):
         status.setSizeGripEnabled(False)
         status.showMessage("Ready")
 
-        database_status = QLabel("Database: not configured", status)
-        database_status.setToolTip("Database storage will be configured in a later phase.")
+        if self._database_path is None:
+            database_status = QLabel("Database: not configured", status)
+            database_status.setToolTip(
+                "The business data location is recorded by the first-launch setup wizard."
+            )
+        else:
+            database_status = QLabel("Database: configured", status)
+            database_status.setToolTip(str(self._database_path))
         status.addPermanentWidget(database_status)
 
         currency = self._viewmodel.currency
@@ -198,7 +209,12 @@ class MainWindow(QMainWindow):
 
     def _create_view(self, key: str, item: NavItem) -> QWidget:
         if key == "dashboard":
-            return HomeView(self._viewmodel.config, self)
+            return HomeView(
+                self._viewmodel.config,
+                self,
+                database_path=self._database_path,
+                data_root=self._data_root,
+            )
         return PlaceholderView(item.label, item.subtitle, self)
 
     def _toggle_theme(self) -> None:

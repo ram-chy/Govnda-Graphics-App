@@ -3,9 +3,9 @@
 | Field | Value |
 | --- | --- |
 | Document | ARCHITECTURE.md |
-| Version | 1.0 |
-| Date | 2026-11-12 |
-| Status | Draft for review |
+| Version | 1.3 |
+| Date | 2026-11-14 |
+| Status | Draft for review — Phase 3 setup workflow implemented |
 | Audience | Developers, reviewer, future maintainers |
 | Related | BLUEPRINT.md, DATABASE_SCHEMA.md, BACKUP_STRATEGY.md, DEVELOPMENT_ROADMAP.md |
 
@@ -103,17 +103,18 @@ Status values: **Accepted** = required by the brief; **Proposed** = needs owner 
 - **Consequences:** No lazy loading after commit; services must load everything they need inside the UoW and return DTOs.
 
 ### ADR-007 — Alembic migrations bundled and applied at startup
-- **Status:** Proposed.
-- **Decision:** Migrations live in `migrations/` and are shipped inside the frozen app. On startup, the app reads the current revision, backs up if an upgrade is required, then upgrades to head. The same migration command is available as a CLI maintenance action.
+- **Status:** Partially implemented in Phase 2. Revision inspection and refusal policy are live; the automatic safety-backup-then-upgrade path belongs to Phase 4.
+- **Decision:** Migrations live in `migrations/` and are shipped inside the frozen app. On startup, the app reads the current revision. Once Phase 4 provides a verified safety backup, an upgrade is backed up first and then applied to head. The same migration command is available as a CLI maintenance action.
 - **Rationale:** Desktop installs cannot rely on a developer running migrations manually; schema and app versions must move together.
+- **Phase 2 behaviour:** A newer or unknown revision refuses startup. A missing or older revision also refuses startup because no verified pre-upgrade backup exists yet; the operator runs `python -m app.tools.migrate upgrade` explicitly. Startup never upgrades silently.
 - **Consequences:** Migration scripts must be path-independent (programmatic `Config`, absolute script location via `sys._MEIPASS` when frozen). Failed upgrades abort startup and preserve the backup.
 
 ### ADR-008 — SQLite connection profile
-- **Status:** Proposed.
-- **Decision:** Every connection sets `PRAGMA foreign_keys=ON`, `busy_timeout=5000`, `journal_mode=WAL`, `synchronous=FULL`, `wal_autocheckpoint=1000`, `temp_store=MEMORY`. `foreign_keys` must be enabled per connection via an event hook.
-- **Rationale:** Referential integrity, crash safety, concurrent readers, short writer waits.
+- **Status:** Implemented in Phase 2.
+- **Decision:** Every connection sets `PRAGMA foreign_keys=ON`, `busy_timeout=5000` (configurable), `journal_mode=WAL`, `synchronous=FULL`, `wal_autocheckpoint=1000`, `temp_store=MEMORY`, `trusted_schema=OFF`. `foreign_keys` must be enabled per connection via an event hook; the hook also verifies that WAL and foreign keys actually took effect.
+- **Rationale:** Referential integrity, crash safety, concurrent readers, short writer waits. `trusted_schema=OFF` blocks schema objects that could execute unsafe functions.
 - **Trade-off:** `synchronous=FULL` is slower than `NORMAL`; for a financial desktop app, durability wins. Re-evaluate with measurements if write latency is unacceptable.
-- **Consequences:** WAL sidecar files (`-wal`, `-shm`) exist while running; backups must use the Online Backup API, never a file copy.
+- **Consequences:** WAL sidecar files (`-wal`, `-shm`) exist while running; backups must use the Online Backup API, never a file copy. A passive checkpoint runs at shutdown before the engine is disposed.
 
 ### ADR-009 — Configuration outside the data folder
 - **Status:** Proposed.
@@ -232,12 +233,14 @@ These rules are enforced by code review plus a lightweight import test in Phase 
 `app/main.py` is the composition root:
 
 1. Configure logging and crash handling.
-2. Load/validate config or run the setup wizard.
-3. Verify database location.
-4. Build the engine/session factory and `UnitOfWork` factory.
-5. Construct services and the module registry.
-6. Create ViewModels and the main window.
-7. Start the Qt event loop.
+2. Acquire the single-instance guard.
+3. Load the configuration with a status of `MISSING`, `LOADED`, or `RECOVERED`.
+4. Classify startup as `SETUP_REQUIRED`, `RECOVERY_REQUIRED`, or `READY`.
+5. Run the blocking setup wizard or recovery dialog when required.
+6. For an existing database, verify the drive, folder, file, identity, revision,
+   and health before opening it.
+7. Build the open `Database` and `AppContext` from the verified parts.
+8. Create ViewModels and the main window, then start the Qt event loop.
 
 No global mutable service locator. Dependencies are passed explicitly; a small `AppContext` dataclass holds the wiring.
 
@@ -334,6 +337,7 @@ Rules:
 - `Session` per unit of work; `expire_on_commit=False` only if DTO mapping happens before commit; prefer mapping inside the transaction.
 - Connections are short-lived. No session is stored on a widget or a long-lived service.
 - Read-only screens use a fresh session per query and return DTOs.
+- Phase 2 implementation: `QueuePool(pool_size=2, max_overflow=0, pool_pre_ping=True)` with an explicit `check_same_thread=False` policy. The small bound makes a second concurrent writer wait instead of multiplying connections.
 
 ### 7.2 Unit of Work
 
@@ -350,6 +354,7 @@ with uow:
 - Nesting is forbidden; a service method is one transaction.
 - Audit and business mutations share the transaction.
 - No dialogs, file IO, PDF generation, or long calculations inside a transaction.
+- Phase 2 implementation: `UnitOfWork` commits only on an explicit `commit()` call. Leaving the block without committing rolls back. Exceptions roll back before propagating. The session always closes and returns its connection to the pool.
 
 ### 7.3 Query strategy
 
@@ -365,6 +370,7 @@ with uow:
 - Migration scripts are reviewed, reversible where practical, and tested on a copy of a realistic database.
 - Startup applies migrations after creating a verified safety backup.
 - Downgrades are not automatic; a failed upgrade stops the app and points to the safety backup.
+- Phase 2 implementation: the baseline revision `0001_baseline` is intentionally empty apart from database identity PRAGMAs. `Base.metadata.create_all()` is never used in production. Startup refuses newer, unknown, older, and uninitialized revisions instead of changing them automatically until Phase 4 introduces the safety-backup gate.
 
 ## 8. Lifecycle
 
@@ -374,14 +380,16 @@ with uow:
 | --- | --- | --- |
 | 1 | Install excepthook, start log | Continue with stderr fallback |
 | 2 | Single-instance mutex | Focus existing instance or exit |
-| 3 | Load config | Missing → setup wizard; corrupt → repair dialog |
-| 4 | Validate data folder | Show blocking error with Retry/Locate/Exit |
-| 5 | Open engine, check integrity (fast) | Offer recovery/restore; do not auto-create |
-| 6 | Check Alembic revision | Higher than app → refuse; lower → backup + upgrade |
-| 7 | Check missed backup | Run catch-up asynchronously, non-blocking |
-| 8 | Build services/viewmodels/window | Fatal error dialog with log ID |
-| 9 | Load dashboard | Show skeleton/progress; errors contained |
-| 10 | Event loop | — |
+| 3 | Load config with status | Missing → setup wizard; corrupt → recovery dialog with the original file preserved |
+| 4 | Classify startup | No location → setup; incomplete/corrupt/unavailable → recovery; verified → ready |
+| 5 | Setup wizard (first launch) | Cancel exits with no database and no saved location; failure stays on the progress page with a safe retry path |
+| 6 | Recovery dialog | Retry / Locate existing data / Start new setup / Exit; never creates a fallback database |
+| 7 | Validate configured data root and drive | Blocking recovery; no directory or file is created |
+| 8 | Open configured database; verify file, identity, connection PRAGMAs, and health | Blocking recovery; never auto-create or substitute another file |
+| 9 | Compare Alembic revision | Newer/unknown → refuse; older/uninitialized → refuse until Phase 4 adds a verified safety backup and upgrade |
+| 10 | Build services/viewmodels/window | Fatal error dialog with log ID |
+| 11 | Load dashboard | Show verified status only; errors contained |
+| 12 | Event loop | — |
 
 ### 8.2 GUI shutdown
 
@@ -409,6 +417,7 @@ with uow:
 ```text
 AppError
 ├── ConfigurationError
+├── SetupError
 ├── DatabaseUnavailableError
 ├── MigrationError
 ├── ValidationError          (field → message mapping)
@@ -627,3 +636,418 @@ Formatting is display-only and lives outside domain calculations. All monetary i
 ### 16.9 Phase 2 seam
 
 Phase 2 can add `app/infrastructure/database`, ORM modules, Alembic, `UnitOfWork`, and integrity checks without changing the shell. The composition root already loads configuration and resolves paths before any UI is built, so engine construction and migration checks can be inserted at step 3–4 of the startup sequence. `AppConfig` is frozen and versioned, so schema-adjacent settings (data folder, schema revision) extend it cleanly. The currency documentation was reconciled on 2026-11-13: `BLUEPRINT.md` and `DATABASE_SCHEMA.md` now specify INR, matching the Phase 1 implementation.
+
+## 17. Phase 2 implementation record (2026-11-13)
+
+This section records the database foundation actually built and verified in
+Phase 2. It supplements the target architecture above and does not approve any
+business table.
+
+### 17.1 Implemented scope
+
+- SQLAlchemy 2 engine, session factory, and connection lifecycle.
+- SQLite PRAGMA profile applied on every connection, with verification.
+- Explicit-commit `UnitOfWork` and a minimal typed repository base.
+- Programmatic Alembic configuration, baseline revision, history and status.
+- Injected absolute database path with no default and no implicit creation.
+- Startup identity/migration checks with no automatic upgrade.
+- Read-only health diagnostics and optional full integrity check.
+- Integer-paise money value object and conversion utilities.
+- Headless migration CLI at `python -m app.tools.migrate`.
+
+No business tables, seeders, sample records, folder-selection wizard, backup
+UI, authentication, or business workflow is part of this phase.
+
+### 17.2 Implemented structure
+
+```text
+alembic.ini                       # Script location only; URL is injected at runtime
+migrations/
+├── env.py                        # Programmatic URL/connection, batch mode
+├── script.py.mako
+└── versions/
+    └── 0001_baseline.py          # Identity PRAGMAs only; no application tables
+app/
+├── app_context.py                # Opens/verifies optional configured database
+├── domain/value_objects/money.py # INR integer-paise value object
+├── infrastructure/database/
+│   ├── base.py                   # Declarative Base, naming convention, identity constants
+│   ├── config.py                 # DatabaseConfig: absolute path, parent, WAL/SHM helpers
+│   ├── engine.py                 # Engine factory, PRAGMAs, Database lifecycle
+│   ├── errors.py                 # Driver error classification and safe messages
+│   ├── health.py                 # Diagnostics and integrity checks
+│   ├── migrations.py             # Alembic manager, status, startup policy
+│   ├── repository.py             # Minimal generic repository
+│   └── session.py                # Explicit-commit UnitOfWork
+└── tools/migrate.py              # init/upgrade/downgrade/status/history/check CLI
+```
+
+`app/infrastructure` may import the domain, SQLAlchemy, Alembic, and the
+standard library. It must not import Qt or `app.ui` (enforced by
+`tests/test_architecture.py`). The domain remains free of database, framework,
+and IO imports.
+
+### 17.3 Connection lifecycle
+
+- `DatabaseConfig` requires an absolute path and an already-existing parent
+  folder. There is no default database path anywhere in the codebase.
+- `create_sqlite_engine` builds a `QueuePool` with `pool_size=2`,
+  `max_overflow=0`, `pool_pre_ping=True`, and the configured busy timeout.
+- A `connect` event applies and then verifies the PRAGMA profile on every new
+  connection: foreign keys on, WAL active, `synchronous=FULL`,
+  `wal_autocheckpoint=1000`, `temp_store=MEMORY`, `trusted_schema=OFF`.
+- `Database.verify_accessible()` requires an existing file and runs `SELECT 1`.
+  It never creates the file.
+- `Database.shutdown()` runs a best-effort passive WAL checkpoint, disposes the
+  engine, and is idempotent. `AppContext.close()` is called from the entry
+  point's `finally` block.
+
+### 17.4 Session and transaction strategy
+
+`Database.unit_of_work()` returns a `UnitOfWork`. The session is created lazily,
+always closes, and never commits implicitly. A missing `commit()` rolls back;
+an exception rolls back before it propagates. SQLite remains single-writer;
+transactions are short and contain no UI, file, or report work.
+
+`Repository[ModelT]` only wraps get/add/delete on the session supplied by the
+unit of work. Business repositories arrive with their approved aggregates.
+
+### 17.5 Database location and startup policy
+
+`AppConfig.database_path` is `null` by default. When it is set, startup:
+
+1. Confirms that the drive and parent folder exist and that the folder is
+   writable, using a temporary probe file that touches no database.
+2. Confirms that the database file exists and accepts a trivial query.
+3. Reads `PRAGMA application_id`; `0` or the project value `1195525971`
+   (`0x47424753`, "GBGS") is accepted, any other value is refused.
+4. Compares the Alembic revision with the application head.
+5. Refuses newer, unknown, older, and uninitialized schemas without modifying
+   the file. Upgrades are explicit through the CLI until Phase 4 provides a
+   verified safety backup.
+
+When `database_path` is `null`, Phase 3 classifies startup as setup-required or
+recovery-required and creates no database file. Phase 2's direct startup path is
+superseded by the setup/recovery workflow in §18.
+
+### 17.6 Migrations and initial schema
+
+- Alembic is driven programmatically; the URL and, when supplied, the live
+  connection are injected through `Config`. The scripts resolve from the
+  repository or `GOBINDAS_MIGRATIONS_DIR` when frozen; the current working
+  directory is never used.
+- `render_as_batch=True` and `compare_type=True` are configured for SQLite.
+- `0001_baseline` creates no application tables. It sets
+  `PRAGMA application_id = 1195525971` and `PRAGMA user_version = 1`. Alembic's
+  `alembic_version` table remains the only table and the sole migration
+  authority.
+- No `schema_metadata`, `app_settings`, `business_profile`, or `audit_logs`
+  table is created because no approved requirement justifies duplicating
+  Alembic's revision, the external configuration file, or an undefined audit
+  event model.
+- `Base.metadata.create_all()` is not used in production code and is rejected
+  by an architecture test.
+- Downgrade to `base` removes the revision and resets both identity PRAGMAs;
+  it is a maintenance action only, never automatic.
+
+### 17.7 Monetary precision
+
+`app/domain/value_objects/money.py` centralizes INR conversion:
+
+- Domain values use `Decimal`; Python `float` and `bool` are rejected.
+- Persistence uses signed 64-bit integer paise (100 paise per rupee).
+- `decimal_to_minor` rounds once with `ROUND_HALF_UP` at a defined boundary.
+- `decimal_to_minor_exact` rejects any value that is not exactly representable.
+- `minor_to_decimal` and `Money` round-trip without binary floating point.
+- Range checks guard the signed 64-bit storage limits, and negative values are
+  allowed only where the caller permits them.
+
+Phase 2 creates no monetary columns; these utilities are the mandatory boundary
+for future accounting, sales, purchase, and inventory modules.
+
+### 17.8 Health diagnostics
+
+`DatabaseDiagnostics.check()` never deletes, recreates, or repairs a file and
+never raises for an expected database failure. It reports: healthy, missing
+database, unavailable path, permission denied, corrupt, locked, wrong database,
+foreign keys disabled, integrity error, migration required, migration failed,
+and unknown error. It reports file/WAL/SHM sizes, SQLite version, application
+and user version, and migration status.
+
+`quick_check` and `foreign_key_check` are cheap reusable calls. Full
+`integrity_check` is opt-in (`full=True` or `migrate check --full`) because it
+scans the whole file; normal startup does not run it.
+
+### 17.9 Verification performed
+
+- `ruff check app tests` — all checks passed.
+- `pytest` — 239 passed.
+- Fresh temporary database: `init`, `status`, `upgrade`, `history`, and
+  `check --full` all succeeded; the full check reported healthy with
+  `quick_check`, `foreign_key_check`, and `integrity_check` all `ok`.
+- Foreign-key violations are rejected by SQLite, and valid references commit.
+- Commit, no-commit rollback, exception rollback, and session cleanup are
+  tested against a real temporary database.
+- Startup tests cover: no configured database, a healthy configured database,
+  a missing configured database, a newer revision, and an uninitialized file.
+- Real startup with no database still produces no `.db`, `.db-wal`, or `.db-shm`
+  file and remains green under the Phase 1 shell tests.
+
+### 17.10 Known limitations and later-phase seams
+
+- The Phase 3 setup wizard now supplies the user-facing location flow; database
+  relocation remains out of scope until Phase 4.
+- No automatic upgrade and no safety backup before migration yet (Phase 4).
+- No business tables, repositories, or accounting workflows yet.
+- Encryption at rest remains deferred (Q-18); SQLite files are unencrypted.
+- `-wal` and `-shm` files are runtime artifacts and must never be treated as
+  backups. Future backups continue to require the SQLite Online Backup API.
+- The About surface does not yet display the schema revision; startup logs do.
+  A UI status surface can consume `DatabaseDiagnostics` when the shell gains a
+  maintenance/settings area.
+
+## 18. Phase 3 implementation record (2026-11-14)
+
+This section records the first-launch setup and database-location workflow
+actually built and verified in Phase 3. It reuses the Phase 2 database contract
+and adds no business table, backup feature, authentication, or business profile.
+
+### 18.1 Implemented scope
+
+- Native PySide6 setup wizard with seven pages: welcome, location, validation,
+  directory review, confirmation, initialization progress, and completion.
+- Native folder picker; the selected absolute path is always displayed.
+- Read-only location validation before any directory or file is created.
+- Additive scaffolding of the approved data-root layout.
+- Database creation through `MigrationManager.create_database()` and safe
+  adoption of an existing healthy database.
+- Full health verification before the location is saved.
+- Atomic `data_root` + `database_path` persistence in the existing
+  `%APPDATA%\GobindasBMS\config.json`.
+- Startup classification and a blocking recovery workflow.
+- Tests for validation, scaffolding, initialization, persistence, startup, UI,
+  recovery, INR preservation, and Phase 1/2 regressions.
+
+### 18.2 Startup lifecycle
+
+`StartupService.assess()` loads the configuration with `load_with_status()` and
+returns exactly one of:
+
+| Mode | Condition | Application action |
+| --- | --- | --- |
+| `SETUP_REQUIRED` | No `data_root` and no `database_path` | Show the setup wizard; the main window is not created |
+| `RECOVERY_REQUIRED` | Corrupt/incomplete config, invalid location, missing drive/folder/database, permission failure, identity mismatch, or unsupported revision | Show the blocking recovery dialog |
+| `READY` | Configured drive, folder, file, identity, revision, and health all pass | Open the verified database and show the main window |
+
+`--smoke-test` never opens a window. It exits `0` when setup is required (with an
+explicit log line), exits `1` for every recovery condition, and otherwise opens
+the verified shell and quits automatically.
+
+Startup never creates a database, directory, or configuration file while
+classifying the environment. A missing drive is detected before any attempt to
+open SQLite, and the saved paths remain untouched.
+
+### 18.3 Setup wizard responsibilities
+
+`app/ui/dialogs/setup_wizard.py` is presentation and orchestration only:
+
+- It collects the root folder and exposes the seven pages in a
+  `QStackedWidget` inside a custom `QDialog`; it is not a browser page and does
+  not use `QWizard`.
+- Back is hidden on the welcome and progress pages. The confirmation page
+  requires an explicit checkbox before initialization.
+- The validation page displays every check with pass, info, warning, or error
+  styling and blocks continuation on any error.
+- The review page lists the exact folders and database file that will be
+  created.
+- Initialization runs in a `QThread` with a dedicated worker so the GUI thread
+  stays responsive. Progress messages are delivered through Qt signals.
+- Failure returns to the progress page with the user-safe message and a
+  "Choose another folder" action; it does not silently retry.
+- Cancellation before initialization changes nothing. Closing during
+  initialization requests interruption and the service cleans up only empty
+  directories created by the failed attempt.
+- The completed wizard hands back a `SetupResult` that owns the open, verified
+  `Database`; the composition root adopts that same connection rather than
+  reopening the file.
+
+`SetupViewModel` contains QtCore-only state and formatting. It does not import
+`QtWidgets`, and no database or filesystem policy lives in the widget.
+
+### 18.4 Folder and drive validation
+
+`DataLocationValidator` in `app/infrastructure/filesystem/validation.py` returns
+a tuple of named checks and never mutates the user's files except for one
+uniquely named temporary probe file.
+
+Checks, in order:
+
+1. Path syntax is valid and non-empty.
+2. The path is absolute.
+3. The path is not UNC and the drive is not a mapped network drive.
+4. `DataRootLayout` accepts the path as a named directory (the drive root alone
+   is refused).
+5. The drive exists.
+6. The drive type is fixed, removable, or unknown-with-warning; optical,
+   network, and unavailable drives are refused.
+7. Protected Windows/system/program folders are refused.
+8. The path is outside the installation directory (executable directory,
+   PyInstaller bundle directory, and repository root).
+9. An existing path is a readable directory, or the nearest existing ancestor
+   is readable and the missing folder can be created.
+10. A probe file can be created, written, flushed, closed, removed, and verified.
+11. Free space can be inspected and is at least `MINIMUM_FREE_SPACE_BYTES`.
+12. A very long path produces a warning, not a hard failure.
+13. An existing database file is reported as a warning (verify and connect); a
+    folder at the database path is an error.
+
+A removable drive is valid but produces a warning that it must remain connected
+whenever the application runs. The validator does not assume that a different
+drive letter means a different physical disk.
+
+### 18.5 Directory scaffolding
+
+`DataRootScaffolder` creates the layout documented in BACKUP_STRATEGY.md §2:
+
+```text
+<data_root>/
+├── Database/
+├── Backups/{Automatic,Manual,Safety}/
+├── Attachments/
+└── Exports/{PDF,Excel}/
+```
+
+Creation is additive and sequential. An existing directory is accepted; a file
+in a required location is a hard error and is never deleted. On failure, the
+scaffolder removes only empty directories that this attempt created, deepest
+first, and keeps any directory that now contains anything. Pre-existing
+directories are never removed.
+
+### 18.6 Database initialization and adoption
+
+`SetupService.initialize()`:
+
+1. Revalidates the chosen root and obtains the fixed layout.
+2. Scaffolds the folders.
+3. If `<root>/Database/BusinessManagement.db` exists, opens it through the
+   Phase 2 startup verification path. Only a healthy Gobindas database at the
+   expected schema revision is adopted; corrupt, unknown, uninitialized, and
+   newer databases are refused with an explanation.
+4. If it does not exist, constructs an absolute `DatabaseConfig` and calls
+   `MigrationManager.create_database()`. No `Base.metadata.create_all()` and no
+   manual Alembic revision insert is used.
+5. Runs `DatabaseDiagnostics.check(full=True)` and requires a healthy report.
+6. Returns the open `Database`, the migration status, the health report, and the
+   scaffold result.
+
+Any failure closes the database and cleans up only the empty directories created
+by this attempt. An existing database is never overwritten, truncated, migrated,
+or replaced.
+
+### 18.7 Configuration persistence
+
+- `AppConfig` gains an optional absolute `data_root`; `database_path` remains the
+  explicit absolute SQLite path. A legacy config with only `database_path` is
+  still valid and is treated as a legacy location.
+- When both are present, `database_path` must be inside `data_root`; this is
+  validated on construction, load, and save.
+- The existing `ConfigService` writes the complete configuration to a temporary
+  file in the same directory, flushes and fsyncs it, validates it, and replaces
+  the original atomically.
+- The updated configuration is built from the user's existing configuration, so
+  INR, theme, logging, and schema settings are preserved. The INR assertions are
+  covered by regression tests.
+- Persistence happens only after database creation and verification. The saved
+  file is re-read and both paths and preserved fields are compared to the result.
+- If persistence fails, `SetupPersistenceError` carries the still-open verified
+  database so the user can retry saving without repeating database work. The
+  database is not deleted.
+- The configuration schema version remains `1`; `data_root` is an optional,
+  backward-compatible field, and unknown future keys are still ignored on load.
+
+`ConfigService.load_with_status()` distinguishes `MISSING`, `LOADED`, and
+`RECOVERED`. `load()` keeps its Phase 1 behavior: an invalid file is moved to
+`config.corrupt-<timestamp>.json` and defaults are returned. The original content
+is preserved for diagnosis and is never silently discarded.
+
+### 18.8 Recovery and missing-drive behavior
+
+`RecoveryDialog` is a blocking native dialog that reports the specific reason
+and the saved database path, data root, and quarantine path (where applicable).
+It offers exactly four choices:
+
+| Choice | Behavior |
+| --- | --- |
+| Retry | Re-runs startup assessment; succeeds if the drive or permission problem has been fixed |
+| Locate existing data... | Native folder picker; `attach_existing()` validates identity, revision, and health before accepting and never creates a file |
+| Start a new setup... | Runs the same setup wizard with an explanation of the consequences |
+| Exit | Closes without changing configuration or creating anything |
+
+There is no "restore backup" action in Phase 3, because restore belongs to
+Phase 4 and must not be faked. No recovery path creates a database on `C:`,
+changes the saved path silently, or opens an empty replacement database.
+
+### 18.9 Implemented structure
+
+```text
+app/
+├── core/
+│   ├── config.py                       # data_root, load_with_status, atomic save
+│   ├── constants.py                    # layout names and minimum free space
+│   └── exceptions.py                   # SetupError
+├── infrastructure/filesystem/
+│   ├── drives.py                       # Windows drive type/capacity/free space
+│   ├── layout.py                       # DataRootLayout and required directories
+│   ├── scaffold.py                     # Additive creation and safe cleanup
+│   └── validation.py                   # Read-only location validation
+├── services/
+│   ├── setup_service.py                # Validate → scaffold → init/adopt → verify → persist
+│   └── startup_service.py              # Setup/recovery/ready classification
+└── ui/
+    ├── dialogs/setup_wizard.py         # Seven-page wizard and worker thread
+    ├── dialogs/recovery_dialog.py      # Blocking recovery choices
+    └── viewmodels/setup_viewmodel.py   # QtCore-only wizard state
+```
+
+`app/services` and `app/infrastructure/filesystem` are enforced as Qt-free by
+`tests/test_architecture.py`. The worker imports no widgets; only the dialog
+touches Qt.
+
+### 18.10 Verification performed
+
+- `ruff check app tests` — all checks passed.
+- `pytest` — 341 passed (239 Phase 2 tests plus 102 Phase 3 tests and
+  regression coverage).
+- Startup tests launch the real entry point with isolated `APPDATA` and
+  `LOCALAPPDATA`: clean profile → setup-required smoke exit `0`; corrupt config →
+  exit `1` with `config.corrupt-*.json`; newer schema → exit `1` with a refusal
+  message; uninitialized file → exit `1`; healthy configured database → shell
+  opens and the smoke test exits cleanly.
+- Wizard tests cover navigation, validation gating, review contents, explicit
+  confirmation, successful initialization, worker failure, cancellation, and
+  hand-off of the open database.
+- Setup-service tests cover initialization, baseline revision, identity, health,
+  existing healthy adoption, unknown/corrupt/uninitialized/newer refusal, no
+  overwrite, persistence failure recovery, and INR preservation.
+- Validation tests cover valid fixed and removable drives, invalid/relative/
+  missing-parent/non-directory/read-only/unwritable/UNC/installation/protected
+  paths, space reporting, and low-space failure with mocked drive APIs.
+- Scaffold tests cover the exact directory set, existing folders and files,
+  partial failure, and safe cleanup.
+- Configuration tests cover absolute paths, data root, legacy configs, null
+  fields, outside-root rejection, atomic writes, re-read verification, corrupt
+  recovery, and INR preservation.
+- The full prior suite remains green.
+
+### 18.11 Known limitations and Phase 4 seams
+
+- Backup, restore, retention, scheduled runs, and relocation are not implemented
+  (Phase 4).
+- An existing healthy database at a future schema revision is refused rather
+  than upgraded; automatic upgrade waits for the Phase 4 safety-backup gate.
+- Business profile fields and tables remain unapproved and unimplemented.
+- Sync-client folders (OneDrive/Dropbox) are not specifically detected; the
+  documented policy is to keep the live database out of live sync. This can be
+  strengthened in a later hardening phase.
+- The recovery dialog intentionally has no restore action until Phase 4 can
+  verify and stage a restore safely.

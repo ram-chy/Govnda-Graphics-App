@@ -1,8 +1,9 @@
 """Filesystem locations used by the application.
 
 Configuration and logs deliberately live outside the future business data
-folder (ADR-009). No database path is defined in Phase 1; the data folder is
-chosen by the setup wizard in a later phase.
+folder (ADR-009). The business database location is stored explicitly in
+``AppConfig.database_path``; this module never defines or guesses a database
+path.
 """
 
 from __future__ import annotations

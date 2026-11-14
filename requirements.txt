@@ -1,4 +1,4 @@
-# Locked runtime dependency set - Phase 1, tested 2026-11-13 on CPython 3.14.6.
+# Locked runtime dependency set - Phase 2, tested 2026-11-13 on CPython 3.14.6.
 # Keep in sync with ARCHITECTURE.md §2.3 and pyproject.toml.
 PySide6==6.12.0
 SQLAlchemy==2.1.8

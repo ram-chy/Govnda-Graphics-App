@@ -3,9 +3,9 @@
 | Field | Value |
 | --- | --- |
 | Document | BACKUP_STRATEGY.md |
-| Version | 1.0 |
-| Date | 2026-11-12 |
-| Status | Draft for review — not implemented |
+| Version | 1.2 |
+| Date | 2026-11-14 |
+| Status | Draft for review — backup not implemented; Phase 3 data-root setup is complete |
 | Priority | Core product feature |
 | Related | BLUEPRINT.md, ARCHITECTURE.md, DATABASE_SCHEMA.md, SECURITY_AND_DATA_PROTECTION.md |
 
@@ -53,6 +53,9 @@ Rules:
 - The data root may be on D:, E:, or another local drive; a network share is not supported for live use.
 - The configuration file lives **outside** this tree in `%APPDATA%\GobindasBMS\config.json`.
 - Backups are stored on the same drive by default. The UI recommends a second destination on a different physical device.
+- `-wal` and `-shm` are live runtime sidecars, not backup files. They may disappear
+  after a clean checkpoint; a valid backup must be produced through the Online
+  Backup API while the database is open.
 
 ## 3. Configuration
 
@@ -62,27 +65,30 @@ Rules:
 
 ```json
 {
-  "config_version": 1,
+  "schema_version": 1,
+  "currency_code": "INR",
+  "currency_symbol": "₹",
+  "currency_decimal_places": 2,
+  "currency_grouping": "indian",
+  "theme": "system",
+  "log_level": "INFO",
   "data_root": "D:\\GobindasBusiness",
-  "database_path": "D:\\GobindasBusiness\\Database\\BusinessManagement.db",
-  "backup": {
-    "enabled": true,
-    "time": "22:00",
-    "retention_days": 30,
-    "keep_minimum": 5,
-    "schedule_task_name": "GobindasBMS\\DailyBackup",
-    "extra_destination": null,
-    "run_catch_up": true
-  },
-  "appearance": { "theme": "system" },
-  "last_schema_revision": "0001_initial"
+  "database_path": "D:\\GobindasBusiness\\Database\\BusinessManagement.db"
 }
 ```
 
 - Paths are absolute and validated on load.
 - `database_path` must reside under `data_root`; if not, the config is invalid.
-- A corrupt config is moved to `config.corrupt-<timestamp>.json` and the setup/repair flow starts; business data is never touched.
+- A legacy config that stores only `database_path` remains loadable and uses no
+  `data_root`.
+- A corrupt config is moved to `config.corrupt-<timestamp>.json` and the recovery
+  flow starts; business data is never touched.
 - Secrets (passwords, encryption keys) must never be stored in this file.
+- Phase 3 writes `data_root` and `database_path` atomically after the database is
+  created and verified. The config schema version remains `1` because
+  `data_root` is an optional backward-compatible field.
+- `backup.*` and `last_schema_revision` remain Phase 4 fields and are not written
+  yet. Future backup settings must extend this same file, not a competing one.
 
 ### 3.2 Backup metadata sidecar
 
@@ -405,17 +411,21 @@ The old location must never be deleted automatically.
 When the configured data root is unavailable:
 
 1. Do not create directories or a new database elsewhere.
-2. Show a blocking dialog/page containing:
-   - the configured path;
-   - the specific reason (drive letter absent, folder missing, permission denied, database file missing);
+2. Show a blocking dialog containing:
+   - the configured database path and data root;
+   - the specific reason (drive letter absent, folder missing, permission denied, database file missing, identity mismatch, unsupported revision);
    - **Retry**;
-   - **Locate database** (browse; validate identity before accepting);
-   - **Restore from backup** (if a backup is accessible);
+   - **Locate existing data** (browse; validate identity and revision before accepting);
+   - **Start a new setup** (explicit new location);
    - **Exit**.
 3. Log the event with the correlation ID.
 4. If the drive reappears while the dialog is open, Retry succeeds and startup continues.
-5. If the user selects a different drive/database, validate `application_id`, business profile, and schema revision; never attach a mismatched business database silently.
-6. The status bar reflects "Database unavailable" until resolved.
+5. If the user selects a different drive/database, validate `application_id` and schema revision; never attach a mismatched business database silently.
+6. The application does not open the main window until the database is verified.
+7. **Restore from backup** is intentionally absent until Phase 4 can verify and
+   stage a restore safely. It must not be faked in the recovery dialog.
+
+The Phase 3 implementation of this flow is recorded in ARCHITECTURE.md §18.8.
 
 ## 12. Verification and drills
 
@@ -485,3 +495,96 @@ When the configured data root is unavailable:
 | Q-19 | Code signing? | SmartScreen warnings on both exes |
 | Q-25 | Should automatic backups also write to a second destination? | Runner logic, failure semantics |
 | Q-26 | Should the app warn/exit if no verified backup exists for N days? | UX policy |
+
+## 17. Phase 2 database compatibility (2026-11-13)
+
+Backup and restore are **not implemented** in Phase 2. The foundation was built to
+make the approved backup design implementable without rework:
+
+- **Online Backup API ready.** The database is a normal SQLite file opened by
+  SQLAlchemy, so a future backup runner can use `sqlite3.Connection.backup()`.
+  Runtime code never holds an exclusive lock and sets no
+  `PRAGMA locking_mode=EXCLUSIVE`.
+- **WAL understood.** WAL is enabled with `synchronous=FULL`. The application
+  performs a best-effort passive checkpoint on clean shutdown and then disposes
+  the engine. A backup taken from the live file must still use the Online Backup
+  API so WAL content is included.
+- **Safe shutdown seam.** `AppContext.close()` disposes the engine from the entry
+  point's `finally` block. The future restore workflow can reuse this to ensure no
+  pooled connection touches a replaced file.
+- **Identity check.** `PRAGMA application_id = 1195525971` identifies a Gobindas
+  database before a backup or restore is accepted.
+- **No automatic migration.** Phase 2 startup refuses a schema that needs an
+  upgrade because the pre-upgrade verified safety backup does not exist yet.
+  Phase 4 adds that backup gate.
+- **No destructive behaviour.** Health checks and startup checks never delete,
+  recreate, repair, or relocate a database.
+
+Phase 4 must add: Online Backup API snapshot, verification (`integrity_check`,
+hash, open test), sidecar metadata, retention, restore staging, and the
+pre-upgrade safety backup.
+
+## 18. Phase 3 setup compatibility (2026-11-14)
+
+Backup and restore are still **not implemented** in Phase 3. The data-root
+workflow now creates and owns the folder layout that Phase 4 will use.
+
+### 18.1 Final Phase 3 layout and ownership
+
+The setup wizard creates exactly:
+
+```text
+<data_root>/
+├── Database/
+│   └── BusinessManagement.db
+├── Backups/
+│   ├── Automatic/
+│   ├── Manual/
+│   └── Safety/
+├── Attachments/
+└── Exports/
+    ├── PDF/
+    └── Excel/
+```
+
+- `<data_root>` is chosen explicitly by the owner; it is never derived from the
+  working directory, the installation directory, or `C:`.
+- `database_path` in the configuration is the absolute path to
+  `<data_root>/Database/BusinessManagement.db`.
+- `data_root` and `database_path` are owned by the setup wizard and are written
+  atomically only after the database passes identity, revision, and health
+  checks.
+- The configuration file remains outside the data root at
+  `%APPDATA%\GobindasBMS\config.json`.
+- Existing folders and files are preserved. Setup removes only empty
+  directories that it created during a failed attempt.
+- The layout directories are created even though backup is not implemented, so
+  Phase 4 does not need to migrate or guess paths.
+
+### 18.2 WAL sidecar implications
+
+- The live database uses WAL; `-wal` and `-shm` appear while the application is
+  open. They are runtime artifacts, not backups.
+- Setup verification checks identity, revision, and health but does not copy the
+  database. No file is treated as a backup in Phase 3.
+- A future backup must use the SQLite Online Backup API while the database is
+  open so WAL content is included.
+- Clean shutdown checkpoints WAL best-effort and disposes the engine. The Phase 3
+  composition root keeps the same shutdown path.
+
+### 18.3 Future backup runner integration points
+
+Phase 4 can reuse:
+
+- `DataRootLayout` for `backups_dir`, `automatic_backups_dir`,
+  `manual_backups_dir`, and `safety_backups_dir`.
+- `AppConfig.data_root` and `AppConfig.database_path`, both loaded and validated
+  by the existing `ConfigService`.
+- The open `Database` lifecycle and verified file for the Online Backup API.
+- `StartupService`/`AppContext` for the app-closed and app-open runner cases.
+- The location validator for a future destination check, without changing the
+  live database path.
+
+Phase 4 must add the backup lock, Online Backup snapshot, verification, sidecar
+metadata, retention, restore staging, and the pre-upgrade safety backup. No
+Phase 3 code claims those capabilities.

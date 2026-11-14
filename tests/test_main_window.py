@@ -142,3 +142,36 @@ def test_theme_manager_toggle_switches_between_explicit_themes(qapp) -> None:
 
     assert manager.toggle() is ThemeMode.DARK
     assert manager.toggle() is ThemeMode.LIGHT
+
+
+def test_configured_database_is_reported_in_status_and_home(
+    qapp, config_service: ConfigService, tmp_path
+) -> None:
+    root = tmp_path / "Business"
+    database_path = root / "Database" / "BusinessManagement.db"
+    config = AppConfig(
+        theme="light",
+        data_root=str(root),
+        database_path=str(database_path),
+    )
+    config_service.save(config)
+    viewmodel = ShellViewModel(config_service, config)
+    window = MainWindow(
+        viewmodel,
+        ThemeManager(qapp),
+        database_path=database_path,
+        data_root=root,
+    )
+
+    try:
+        labels = window.findChildren(QLabel)
+        texts = [label.text() for label in labels]
+        assert "Database: configured" in texts
+        configured = next(label for label in labels if label.text() == "Database: configured")
+        assert configured.toolTip() == str(database_path)
+        assert any(str(database_path) in text for text in texts)
+        assert any(text == str(root) for text in texts)
+    finally:
+        window.close()
+        window.deleteLater()
+        qapp.processEvents()

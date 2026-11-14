@@ -68,6 +68,45 @@ def test_viewmodels_do_not_import_qtwidgets() -> None:
     assert violations == []
 
 
+def test_infrastructure_has_no_qt_or_ui_imports() -> None:
+    forbidden = {"PySide6", "shiboken6", "app.ui"}
+    violations: list[str] = []
+    for path in _python_files(APP_ROOT / "infrastructure"):
+        for imported in _imported_roots(path):
+            if _matches_forbidden(imported, forbidden):
+                violations.append(f"{path.relative_to(PROJECT_ROOT)} imports {imported}")
+    assert violations == []
+
+
+def test_services_have_no_qt_or_ui_imports() -> None:
+    forbidden = {"PySide6", "shiboken6", "app.ui"}
+    violations: list[str] = []
+    for path in _python_files(APP_ROOT / "services"):
+        for imported in _imported_roots(path):
+            if _matches_forbidden(imported, forbidden):
+                violations.append(f"{path.relative_to(PROJECT_ROOT)} imports {imported}")
+    assert violations == []
+
+
+def test_tools_have_no_qt_imports() -> None:
+    forbidden = {"PySide6", "shiboken6"}
+    violations: list[str] = []
+    for path in _python_files(APP_ROOT / "tools"):
+        for imported in _imported_roots(path):
+            if _matches_forbidden(imported, forbidden):
+                violations.append(f"{path.relative_to(PROJECT_ROOT)} imports {imported}")
+    assert violations == []
+
+
+def test_production_code_never_creates_tables_implicitly() -> None:
+    violations: list[str] = []
+    for path in _python_files(APP_ROOT):
+        source = path.read_text(encoding="utf-8")
+        if ".create_all(" in source:
+            violations.append(str(path.relative_to(PROJECT_ROOT)))
+    assert violations == []
+
+
 def test_financial_modules_do_not_call_float() -> None:
     financial_paths = [
         *(_python_files(APP_ROOT / "domain")),

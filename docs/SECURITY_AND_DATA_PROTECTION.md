@@ -3,9 +3,9 @@
 | Field | Value |
 | --- | --- |
 | Document | SECURITY_AND_DATA_PROTECTION.md |
-| Version | 1.0 |
-| Date | 2026-11-12 |
-| Status | Draft for review |
+| Version | 1.2 |
+| Date | 2026-11-14 |
+| Status | Draft for review — Phase 3 setup and location controls implemented |
 | Related | ARCHITECTURE.md, BACKUP_STRATEGY.md, DATABASE_SCHEMA.md |
 
 ## 1. Scope and honesty about limits
@@ -86,11 +86,27 @@ Out of scope: remote network attacks (no listener), multi-tenant isolation, prot
 
 At setup and relocation, verify:
 
-- the folder is not inside the application installation directory;
-- the path is not a UNC network path for the live database;
-- the user can create, write, rename, and delete a test file;
-- free space is sufficient;
-- warnings are shown for OneDrive/Dropbox/Google Drive sync paths, because live SQLite files can corrupt under sync clients. Offer to proceed only with an explicit warning and guidance to sync backups instead.
+- the path is absolute, syntactically valid, and names a folder rather than a
+  drive root or a file;
+- the folder is not inside the application installation directory (executable
+  directory, PyInstaller bundle directory, or repository root);
+- the path is not a UNC network path and the drive is not a mapped network
+  drive; optical and unavailable drives are refused;
+- the location is not a protected Windows system, program, or program-data
+  folder;
+- an existing folder is readable, or its nearest existing ancestor is readable
+  and writable so the chosen folder can be created;
+- the user can create, write, flush, close, remove, and verify a uniquely named
+  test file; the probe never overwrites a user file;
+- free space can be inspected and meets the configured minimum, with the actual
+  value shown to the user;
+- a removable drive is allowed with an explicit warning that it must remain
+  connected whenever the application runs;
+- warnings are shown for OneDrive/Dropbox/Google Drive sync paths, because live
+  SQLite files can corrupt under sync clients. Phase 3 does not yet detect sync
+  clients automatically; the setup text and this document warn against live
+  sync. Offer to proceed only with an explicit warning and guidance to sync
+  backups instead. Automatic detection is a later hardening item.
 
 ### 5.3 Disk encryption
 
@@ -137,6 +153,24 @@ If single-user is chosen, the app relies on the Windows account and should still
 - Do not attach arbitrary databases via SQL; open only validated paths.
 - Treat SQLite as unencrypted by default. Do not claim otherwise.
 - Encryption at rest (SQLCipher) is deferred pending Q-18; it requires a custom SQLite build, key management, backup coverage, and a recovery plan. It is not a checkbox feature.
+
+Phase 2 implementation:
+
+- The database path is injected as an absolute path and never derived from the
+  current directory. Parent existence and write permission are checked before a
+  new database is created; startup never creates, switches, or deletes a file.
+- Every connection applies and then verifies `foreign_keys=ON`,
+  `journal_mode=WAL`, `synchronous=FULL`, `busy_timeout`,
+  `wal_autocheckpoint=1000`, `temp_store=MEMORY`, and `trusted_schema=OFF`.
+- `PRAGMA application_id = 1195525971` rejects an unrelated SQLite file. Alembic's
+  revision is compared with the application head; newer or unknown schemas are
+  refused.
+- Driver failures are translated at the infrastructure boundary into
+  `DatabaseUnavailableError`/`MigrationError` with safe user messages. SQL,
+  absolute internal details, and file content are not shown in dialogs; technical
+  detail goes to the log.
+- Health checks never delete, recreate, or repair a file. A write-capability check
+  takes `BEGIN IMMEDIATE` and immediately rolls back without changing data.
 
 ## 9. Financial integrity controls
 
@@ -240,6 +274,7 @@ See BACKUP_STRATEGY.md for the operational detail.
 | Soft-deactivate | Masters use `is_active`; history remains |
 | Transaction atomicity | UoW commit/rollback; no partial postings |
 | Migration safety | Pre-upgrade verified backup; refuse newer schema; rollback on failure |
+| Phase 2 migration reality | Pending/newer/unknown schemas refuse startup; no automatic upgrade until the Phase 4 safety backup exists |
 | Restore safety | Pre-restore safety backup; staged swap; rollback copy |
 | Backup retention guards | Never delete last/newest valid; manual/safety untouched |
 | Missing drive | Blocking error; no fallback; no auto-create |
@@ -317,3 +352,127 @@ See BACKUP_STRATEGY.md for the operational detail.
 | SQ-01 | Idle-lock when no login is used? | Off until approved |
 | SQ-02 | Support-bundle export feature? | Not in v1 |
 | SQ-03 | Password reset recovery procedure (if auth) | Manual, documented, audited |
+
+## 18. Phase 2 database protection record (2026-11-13)
+
+### 18.1 Permissions and location
+
+- Configuration lives in `%APPDATA%\GobindasBMS\config.json`; logs in
+  `%LOCALAPPDATA%\GobindasBMS\logs`; the database is wherever the owner configures
+  an absolute path through the Phase 3 setup wizard (see §19).
+- A missing drive or parent folder is a blocking error. The application never
+  falls back to `C:`, the project directory, or another existing file.
+- Before creation, the folder is probed with a uniquely named temporary file that
+  is removed immediately. The existing database file is not touched.
+- Creation requires an explicit `migrate init`; startup never creates a file.
+
+### 18.2 Corruption and unavailable-file handling
+
+- A corrupt, locked, permission-denied, or missing file produces a specific
+  `DatabaseHealthStatus` and an actionable message. The application does not
+  delete, recreate, truncate, or repair it automatically.
+- A wrong `application_id` is refused as "not a Gobindas Graphics database".
+- A newer/unknown schema is refused; this version never downgrades it.
+- Full `PRAGMA integrity_check` is opt-in for support/maintenance because it scans
+  the file. Normal startup only checks accessibility, identity, and revision.
+- `PRAGMA quick_check` and `PRAGMA foreign_key_check` are reusable diagnostics.
+
+### 18.3 Connection safety
+
+- One bounded `QueuePool` (two connections, no overflow) and short-lived sessions.
+- `UnitOfWork` never commits implicitly; a missing commit or an exception rolls
+  back. Sessions always close and connections return to the pool.
+- Shutdown checkpoints WAL best-effort then disposes the engine. Failures during
+  checkpoint are logged, not hidden.
+- WAL sidecars are not backed up independently and do not expose business data
+  beyond the same user-account permissions as the main file.
+
+### 18.4 Residual risks
+
+- SQLite files are unencrypted; permissions and Windows account security are the
+  primary controls. Q-18 remains open.
+- Any process running as the same Windows user can read or modify the database.
+- Backups, restore, and destructive confirmations are not implemented yet; their
+  controls remain described in BACKUP_STRATEGY.md.
+
+## 19. Phase 3 setup and location protection record (2026-11-14)
+
+### 19.1 Folder permissions and validation
+
+- The owner selects one absolute business data root. The application never
+  derives it from the working directory, the installation directory, or `C:`.
+- The location must be a named folder on a local fixed, removable, or
+  unknown-with-warning drive. Drive roots, UNC paths, mapped network drives,
+  optical drives, protected Windows/program folders, and installation paths are
+  refused before anything is created.
+- An existing folder must be readable. A missing folder may be created only when
+  its nearest existing ancestor is readable and writable.
+- Write access is proven with a uniquely named probe file created, written,
+  flushed, closed, removed, and checked. No user file is touched.
+- Free space is read from the drive and shown to the user. The initial check
+  requires a small documented minimum; it is not presented as a capacity
+  forecast.
+- Removable drives are accepted with a warning that removing the drive blocks
+  startup. The warning does not claim that a drive letter identifies a physical
+  disk.
+
+### 19.2 Drive availability and UNC policy
+
+- The live SQLite database is local-only. UNC and mapped network drives are
+  rejected at setup and at startup.
+- If the configured drive is absent at startup, the application does not create
+  folders, create a database, or change the saved path. The recovery dialog
+  explains the reason and offers Retry, Locate existing data, Start a new setup,
+  or Exit.
+- Locating existing data validates the Gobindas `application_id`, Alembic
+  revision, and database health before the connection is accepted.
+- The status bar distinguishes unconfigured and configured databases, and the
+  dashboard shows the verified data root and database path.
+
+### 19.3 Configuration protection
+
+- The configuration file remains outside the business data root in
+  `%APPDATA%\GobindasBMS\config.json`.
+- The complete configuration is written to a temporary file in the same
+  directory, flushed, fsynced, validated, and atomically replaced. The saved
+  file is then re-read and compared with the verified setup result.
+- The existing settings are preserved: INR (`INR`, `₹`, 2 decimals, Indian
+  grouping), theme, logging, and schema version. Regression tests assert this.
+- A corrupt configuration is preserved as `config.corrupt-<timestamp>.json`;
+  defaults are used for diagnosis and the recovery dialog is shown. The original
+  file is never silently deleted.
+- Logs record path decisions and failure reasons but not business payloads,
+  credentials, or full file contents.
+
+### 19.4 Database overwrite prevention
+
+- Setup never overwrites, truncates, migrates, or replaces an existing database.
+- An existing file is opened through the Phase 2 verification path. Only a
+  healthy Gobindas database at the expected revision is adopted. Unknown,
+  corrupt, uninitialized, and newer databases are refused with an explanation.
+- Database creation goes through `MigrationManager.create_database()`. No
+  `Base.metadata.create_all()` and no manual Alembic revision insert is used.
+- The location is persisted only after identity, revision, and full health checks
+  pass.
+- If configuration persistence fails, the verified database is kept and the
+  user can retry the save; it is not deleted to make the error disappear.
+
+### 19.5 Setup recovery behavior
+
+- Cancelling before initialization leaves no database, no data-root folder, and
+  no saved location. The next launch offers setup again.
+- A failed scaffold or initialization removes only empty directories created by
+  that attempt and preserves every pre-existing file and folder.
+- The recovery dialog never creates a replacement database, never changes the
+  saved path silently, and never opens an empty database.
+- Restore from backup is deliberately absent until Phase 4 can verify and stage
+  it. Presenting it earlier would be a false safety claim.
+
+### 19.6 Residual risks
+
+- SQLite files and backups are unencrypted; Windows account security and
+  BitLocker remain the primary controls (Q-18).
+- Any process running as the same Windows user can read or modify the database.
+- Sync-client folders are not detected automatically in Phase 3.
+- Backup, restore, retention, and relocation controls remain Phase 4 work and
+  are not claimed here.

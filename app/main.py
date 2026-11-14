@@ -1,7 +1,8 @@
 """Application entry point (composition root).
 
-Startup order: logging, configuration, Qt application, single-instance guard,
-theme, main window, event loop. Business logic must not live here.
+Startup order: logging, Qt application, single-instance guard, startup
+assessment (setup / recovery / ready), theme, window, event loop. Business logic
+must not live here.
 """
 
 from __future__ import annotations
@@ -9,19 +10,30 @@ from __future__ import annotations
 import logging
 import os
 import sys
+from pathlib import Path
 
 from PySide6.QtCore import Qt, QTimer
 from PySide6.QtGui import QGuiApplication
-from PySide6.QtWidgets import QApplication, QMessageBox
+from PySide6.QtWidgets import QApplication, QDialog, QFileDialog, QMessageBox
 
 from app.app_context import AppContext
 from app.core import constants
+from app.core.config import AppConfig, ConfigService
 from app.core.error_handling import install_excepthook
 from app.core.exceptions import AppError
 from app.core.logging_config import configure_logging, new_correlation_id
-from app.core.paths import default_paths
+from app.core.paths import AppPaths, default_paths
 from app.core.single_instance import SingleInstanceGuard
+from app.services.setup_service import SetupResult, SetupService
+from app.services.startup_service import (
+    RecoveryReason,
+    StartupAssessment,
+    StartupMode,
+    StartupService,
+)
 from app.ui.dialogs.error_dialog import show_fatal_error
+from app.ui.dialogs.recovery_dialog import RecoveryAction, RecoveryDialog
+from app.ui.dialogs.setup_wizard import SetupWizard
 from app.ui.main_window import MainWindow
 from app.ui.themes.manager import ThemeManager
 from app.ui.viewmodels.shell_viewmodel import ShellViewModel
@@ -66,6 +78,105 @@ def _log_startup_context(context: AppContext) -> None:
         context.config.currency_code,
         context.config.log_level,
     )
+    if context.database is None:
+        logger.info("Database: not configured")
+    else:
+        logger.info(
+            "Database: %s | data root=%s | busy_timeout=%d ms",
+            context.database.config.path,
+            context.config.data_root or "(legacy configuration)",
+            context.database.config.busy_timeout_ms,
+        )
+
+
+def _run_setup_wizard(
+    service: SetupService,
+    base_config: AppConfig,
+    *,
+    initial_path: str | None = None,
+) -> SetupResult | None:
+    wizard = SetupWizard(service, base_config, initial_path=initial_path)
+    if wizard.exec() == QDialog.DialogCode.Accepted:
+        return wizard.take_result()
+    return None
+
+
+def _recovery_start_directory(assessment: StartupAssessment) -> str:
+    candidates = (assessment.data_root, assessment.database_path)
+    for candidate in candidates:
+        if candidate is None:
+            continue
+        if candidate.is_dir():
+            return str(candidate)
+        if candidate.parent.is_dir():
+            return str(candidate.parent)
+    return str(Path.home())
+
+
+def _run_recovery(
+    startup: StartupService,
+    config_service: ConfigService,
+    paths: AppPaths,
+    assessment: StartupAssessment,
+) -> AppContext | None:
+    """Loop the blocking recovery workflow until a database is ready or the user exits."""
+    service = SetupService(config_service)
+    current = assessment
+    while current.mode is StartupMode.RECOVERY_REQUIRED:
+        dialog = RecoveryDialog(
+            current.message,
+            database_path=current.database_path,
+            data_root=current.data_root,
+            quarantine_path=current.quarantine_path,
+        )
+        dialog.exec()
+        action = dialog.action
+
+        if action is RecoveryAction.EXIT:
+            logger.info("Recovery: user chose to exit")
+            return None
+        if action is RecoveryAction.RETRY:
+            current = startup.assess()
+            continue
+        if action is RecoveryAction.LOCATE:
+            chosen = QFileDialog.getExistingDirectory(
+                None,
+                "Locate the existing business data folder",
+                _recovery_start_directory(current),
+            )
+            if not chosen:
+                continue
+            try:
+                result = service.attach_existing(Path(chosen), base_config=current.config)
+            except AppError as exc:
+                QMessageBox.critical(
+                    None,
+                    "Existing business data could not be opened",
+                    exc.user_message,
+                )
+                continue
+            return AppContext.from_parts(
+                paths,
+                config=result.config,
+                config_service=config_service,
+                database=result.database,
+            )
+        if action is RecoveryAction.NEW_SETUP:
+            result = _run_setup_wizard(
+                service,
+                current.config,
+                initial_path=_recovery_start_directory(current),
+            )
+            if result is not None:
+                return AppContext.from_parts(
+                    paths,
+                    config=result.config,
+                    config_service=config_service,
+                    database=result.database,
+                )
+            current = startup.assess()
+            continue
+    return None
 
 
 def run(argv: list[str] | None = None) -> int:
@@ -126,20 +237,81 @@ def run(argv: list[str] | None = None) -> int:
         logging.shutdown()
         return 0
 
+    context: AppContext | None = None
     try:
-        context = AppContext.create(paths)
+        config_service = ConfigService(paths.config_file)
+        startup = StartupService(config_service)
+        assessment = startup.assess()
 
-        # Apply the configured level now that the configuration is trusted.
         log_file = configure_logging(
             paths.log_file(),
-            level=context.config.log_level,
+            level=assessment.config.log_level,
             console=_console_logging_enabled(),
         )
-        _log_startup_context(context)
 
         theme_manager = ThemeManager(application)
+        theme_manager.apply(assessment.config.theme)
+
+        if assessment.mode is StartupMode.SETUP_REQUIRED:
+            if smoke_test:
+                logger.info(
+                    "Setup required: no database location is configured. "
+                    "Smoke test exiting without opening a window."
+                )
+                return 0
+            logger.info("First-launch setup required")
+            result = _run_setup_wizard(SetupService(config_service), assessment.config)
+            if result is None:
+                logger.info("First-launch setup cancelled; no database was created")
+                return 0
+            context = AppContext.from_parts(
+                paths,
+                config=result.config,
+                config_service=config_service,
+                database=result.database,
+            )
+        elif assessment.mode is StartupMode.RECOVERY_REQUIRED:
+            if smoke_test:
+                correlation_id = new_correlation_id()
+                logger.error(
+                    "Startup recovery required [%s] (%s): %s",
+                    correlation_id,
+                    assessment.recovery_reason.value
+                    if assessment.recovery_reason is not None
+                    else RecoveryReason.UNKNOWN.value,
+                    assessment.message,
+                    extra={"correlation_id": correlation_id},
+                )
+                return 1
+            logger.info(
+                "Startup recovery required (%s)",
+                assessment.recovery_reason.value
+                if assessment.recovery_reason is not None
+                else RecoveryReason.UNKNOWN.value,
+            )
+            context = _run_recovery(startup, config_service, paths, assessment)
+            if context is None:
+                logger.info("Recovery exited without opening the application")
+                return 0
+        else:
+            if assessment.database is None:  # pragma: no cover - defensive
+                raise RuntimeError("startup assessment reported ready without a database")
+            context = AppContext.from_parts(
+                paths,
+                config=assessment.config,
+                config_service=config_service,
+                database=assessment.database,
+            )
+
+        _log_startup_context(context)
+
         viewmodel = ShellViewModel(context.config_service, context.config)
-        window = MainWindow(viewmodel, theme_manager)
+        window = MainWindow(
+            viewmodel,
+            theme_manager,
+            database_path=context.database_path,
+            data_root=Path(context.config.data_root) if context.config.data_root else None,
+        )
         window.show()
 
         application.aboutToQuit.connect(lambda: logger.info("Application shutdown requested"))
@@ -180,6 +352,8 @@ def run(argv: list[str] | None = None) -> int:
             show_fatal_error(None, correlation_id, log_file)
         return 1
     finally:
+        if context is not None:
+            context.close()
         guard.release()
         logger.info("Application exiting")
         logging.shutdown()
