@@ -103,8 +103,8 @@ Status values: **Accepted** = required by the brief; **Proposed** = needs owner 
 - **Consequences:** No lazy loading after commit; services must load everything they need inside the UoW and return DTOs.
 
 ### ADR-007 — Alembic migrations bundled and applied at startup
-- **Status:** Partially implemented in Phase 2. Revision inspection and refusal policy are live; the automatic safety-backup-then-upgrade path belongs to Phase 4.
-- **Decision:** Migrations live in `migrations/` and are shipped inside the frozen app. On startup, the app reads the current revision. Once Phase 4 provides a verified safety backup, an upgrade is backed up first and then applied to head. The same migration command is available as a CLI maintenance action.
+- **Status:** Implemented for the maintenance path in Phase 4. Revision inspection and refusal policy are live; schema changes run through a verified safety-backup gate before Alembic is applied. Normal startup still never migrates automatically.
+- **Decision:** Migrations live in `migrations/` and are shipped inside the frozen app. On startup, the app reads the current revision and refuses unsafe states. For supported maintenance-driven upgrades/downgrades, the application verifies the current database, acquires the global operation lock, creates and verifies a Safety backup, and only then applies the schema change. Automatic startup migration remains disabled.
 - **Rationale:** Desktop installs cannot rely on a developer running migrations manually; schema and app versions must move together.
 - **Phase 2 behaviour:** A newer or unknown revision refuses startup. A missing or older revision also refuses startup because no verified pre-upgrade backup exists yet; the operator runs `python -m app.tools.migrate upgrade` explicitly. Startup never upgrades silently.
 - **Consequences:** Migration scripts must be path-independent (programmatic `Config`, absolute script location via `sys._MEIPASS` when frozen). Failed upgrades abort startup and preserve the backup.

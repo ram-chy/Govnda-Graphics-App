@@ -1,9 +1,20 @@
-"""Explicit dependency wiring for the application root (composition root)."""
+"""Explicit dependency wiring for the application root (composition root).
+
+The live database is held through a :class:`DatabaseRuntime` because restore and
+relocation replace the file while the application keeps running. The UI never
+captures an engine directly; it asks the runtime for the current one after an
+operation completes.
+
+Backup, restore, relocation, and schedule use cases are constructed by a
+:class:`BackupWorkspaceFactory` bound to the same runtime. The factory is kept on
+the context so the window can rebuild a workspace after relocation without
+re-reading anything from a working directory.
+"""
 
 from __future__ import annotations
 
 import logging
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
 from app.core.config import AppConfig, ConfigService
@@ -11,6 +22,8 @@ from app.core.paths import AppPaths
 from app.infrastructure.database.config import DatabaseConfig
 from app.infrastructure.database.engine import Database
 from app.infrastructure.database.migrations import verify_database_for_startup
+from app.services.backup_workspace import BackupWorkspace, BackupWorkspaceFactory
+from app.services.database_runtime import DatabaseRuntime
 
 logger = logging.getLogger(__name__)
 
@@ -19,15 +32,23 @@ logger = logging.getLogger(__name__)
 class AppContext:
     """Objects constructed at startup and passed explicitly to the UI.
 
-    ``database`` is ``None`` when no database has been configured yet. The
-    application never invents a path, so Phase 1 startup behaviour is preserved
-    exactly until the setup wizard records one.
+    ``runtime.database`` is ``None`` when no database has been configured yet.
+    The application never invents a path, so Phase 1 startup behaviour is
+    preserved exactly until the setup wizard records one.
     """
 
     paths: AppPaths
     config: AppConfig
     config_service: ConfigService
-    database: Database | None = None
+    runtime: DatabaseRuntime = field(default_factory=DatabaseRuntime)
+    workspace_factory: BackupWorkspaceFactory = field(init=False)
+
+    def __post_init__(self) -> None:
+        object.__setattr__(
+            self,
+            "workspace_factory",
+            BackupWorkspaceFactory(self.config_service, self.runtime),
+        )
 
     @classmethod
     def create(cls, paths: AppPaths) -> AppContext:
@@ -56,23 +77,35 @@ class AppContext:
         config: AppConfig,
         config_service: ConfigService,
         database: Database | None,
+        runtime: DatabaseRuntime | None = None,
     ) -> AppContext:
         """Build a context from an already assessed configuration and database."""
+        active = runtime or DatabaseRuntime()
+        if database is not None:
+            active.install(database)
         return cls(
             paths=paths,
             config=config,
             config_service=config_service,
-            database=database,
+            runtime=active,
         )
 
     @property
+    def database(self) -> Database | None:
+        return self.runtime.database
+
+    @property
     def database_path(self) -> Path | None:
-        return self.database.config.path if self.database is not None else None
+        return self.runtime.path
+
+    @property
+    def workspace(self) -> BackupWorkspace | None:
+        """Return the current backup workspace, if configuration supports one."""
+        return self.workspace_factory.build_optional()
 
     def close(self) -> None:
         """Release pooled database connections. Safe to call more than once."""
-        if self.database is not None:
-            self.database.shutdown()
+        self.runtime.close()
 
 
 def _open_configured_database(config: AppConfig) -> Database | None:
@@ -93,3 +126,6 @@ def _open_configured_database(config: AppConfig) -> Database | None:
         raise
     logger.info("Configured database opened: %s", database.config.path)
     return database
+
+
+__all__ = ["AppContext"]

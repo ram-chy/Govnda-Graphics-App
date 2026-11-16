@@ -88,6 +88,24 @@ def default_migrations_dir() -> Path:
     return Path(__file__).resolve().parents[3] / "migrations"
 
 
+def application_head_revision(migrations_dir: Path | None = None) -> str:
+    """Return the application's migration head without opening a database.
+
+    Backup restore eligibility and the pre-upgrade gate need the revision the
+    running application understands, even when the live database is closed for
+    replacement. Only Alembic's script directory is read here.
+    """
+    directory = Path(migrations_dir or default_migrations_dir())
+    if not directory.is_dir():
+        raise MigrationError(f"migrations directory not found: {directory}")
+    config = Config()
+    config.set_main_option("script_location", str(directory))
+    head = ScriptDirectory.from_config(config).get_current_head()
+    if head is None:
+        raise MigrationError("the application has no migration head")
+    return head
+
+
 def evaluate_migration_state(
     current_revision: str | None,
     head_revision: str | None,
@@ -326,6 +344,7 @@ __all__ = [
     "MigrationManager",
     "MigrationState",
     "MigrationStatus",
+    "application_head_revision",
     "default_migrations_dir",
     "evaluate_migration_state",
     "read_application_id",

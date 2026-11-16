@@ -1,0 +1,10 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "providers": {
+    "ollama": {
+      "settings": {
+        "baseURL": "https://destination-reality-gary-toll.trycloudflare.com/v1"
+      }
+    }
+  }
+}

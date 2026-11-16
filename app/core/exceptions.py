@@ -66,8 +66,42 @@ class BackupError(AppError):
     """A backup operation failed."""
 
 
+class BackupVerificationError(BackupError):
+    """A created or selected backup did not pass verification."""
+
+
+class OperationLockedError(AppError):
+    """Another backup, restore, relocation, or upgrade owns the operation lock."""
+
+    def __init__(
+        self,
+        message: str,
+        *,
+        owner: object | None = None,
+        user_message: str | None = None,
+    ) -> None:
+        super().__init__(message, user_message=user_message)
+        self.owner = owner
+
+
 class RestoreError(AppError):
     """A restore operation failed."""
+
+
+class RelocationError(AppError):
+    """The database could not be moved to the selected location."""
+
+
+class RetentionError(AppError):
+    """Backup retention could not be applied safely."""
+
+
+class SchedulerError(AppError):
+    """Windows Task Scheduler registration or removal failed."""
+
+
+class UpgradeError(AppError):
+    """A schema upgrade could not be performed safely."""
 
 
 class ExportError(AppError):

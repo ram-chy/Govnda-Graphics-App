@@ -11,17 +11,23 @@ from PySide6.QtWidgets import (
     QHBoxLayout,
     QLabel,
     QMainWindow,
+    QMessageBox,
     QStackedWidget,
     QVBoxLayout,
     QWidget,
 )
 
 from app.core import constants
+from app.core.config import ConfigService
+from app.services.backup_workspace import BackupWorkspaceFactory
+from app.services.database_runtime import DatabaseRuntime
 from app.ui.components.placeholder_view import PlaceholderView
 from app.ui.components.sidebar import NavGroup, NavItem, Sidebar
 from app.ui.components.top_bar import TopBar
 from app.ui.themes.manager import ThemeManager
+from app.ui.viewmodels.backup_viewmodel import BackupViewModel
 from app.ui.viewmodels.shell_viewmodel import ShellViewModel
+from app.ui.views.backup_view import BackupView
 from app.ui.views.home_view import HomeView
 
 logger = logging.getLogger(__name__)
@@ -81,6 +87,9 @@ class MainWindow(QMainWindow):
         app_version: str = constants.APP_VERSION,
         database_path: Path | None = None,
         data_root: Path | None = None,
+        config_service: ConfigService | None = None,
+        database_runtime: DatabaseRuntime | None = None,
+        workspace_factory: BackupWorkspaceFactory | None = None,
         parent: QWidget | None = None,
     ) -> None:
         super().__init__(parent)
@@ -90,12 +99,27 @@ class MainWindow(QMainWindow):
         self._data_root = data_root
         self._views: dict[str, QWidget] = {}
         self._current_key = ""
+        self._backup_viewmodel: BackupViewModel | None = None
+        if (
+            config_service is not None
+            and database_runtime is not None
+            and workspace_factory is not None
+        ):
+            self._backup_viewmodel = BackupViewModel(
+                workspace_factory,
+                config_service,
+                database_runtime,
+                parent=self,
+            )
 
         self.setWindowTitle(constants.APP_NAME)
         self.resize(1440, 900)
         self.setMinimumSize(1280, 720)
 
         self._build_ui(app_version)
+        if self._backup_viewmodel is not None:
+            self._backup_viewmodel.status_message.connect(self._show_status_message)
+            self._backup_viewmodel.database_changed.connect(self._on_database_changed)
 
         self._theme_manager.changed.connect(self._on_theme_changed)
         self._theme_manager.apply(self._viewmodel.theme_preference)
@@ -146,8 +170,28 @@ class MainWindow(QMainWindow):
         logger.info("Navigated to %s", key)
 
     def closeEvent(self, event: QCloseEvent) -> None:
+        if self._backup_viewmodel is not None and self._backup_viewmodel.is_busy:
+            logger.info("Close requested while a backup operation is running")
+            QMessageBox.warning(
+                self,
+                "A backup operation is still running",
+                "Wait for the current backup, restore, relocation, or schedule change to "
+                "finish before closing the application. The operation is protected by a "
+                "cross-process lock and cannot be cancelled safely.",
+            )
+            event.ignore()
+            return
         logger.info("Main window closing")
+        if self._backup_viewmodel is not None:
+            self._backup_viewmodel.shutdown()
         super().closeEvent(event)
+
+    def run_startup_catch_up(self) -> bool:
+        """Run one missed-backup check if the backup workspace is available."""
+        if self._backup_viewmodel is None:
+            logger.info("Startup catch-up skipped: backup workspace is unavailable")
+            return False
+        return self._backup_viewmodel.run_startup_catch_up()
 
     def _build_ui(self, app_version: str) -> None:
         central = QWidget(self)
@@ -185,14 +229,14 @@ class MainWindow(QMainWindow):
         status.showMessage("Ready")
 
         if self._database_path is None:
-            database_status = QLabel("Database: not configured", status)
-            database_status.setToolTip(
+            self._database_status = QLabel("Database: not configured", status)
+            self._database_status.setToolTip(
                 "The business data location is recorded by the first-launch setup wizard."
             )
         else:
-            database_status = QLabel("Database: configured", status)
-            database_status.setToolTip(str(self._database_path))
-        status.addPermanentWidget(database_status)
+            self._database_status = QLabel("Database: configured", status)
+            self._database_status.setToolTip(str(self._database_path))
+        status.addPermanentWidget(self._database_status)
 
         currency = self._viewmodel.currency
         currency_status = QLabel(f"{currency.code} {currency.symbol}", status)
@@ -209,13 +253,40 @@ class MainWindow(QMainWindow):
 
     def _create_view(self, key: str, item: NavItem) -> QWidget:
         if key == "dashboard":
-            return HomeView(
-                self._viewmodel.config,
-                self,
-                database_path=self._database_path,
-                data_root=self._data_root,
-            )
+            return self._build_home_view()
+        if key == "backup" and self._backup_viewmodel is not None:
+            return BackupView(self._backup_viewmodel, self)
         return PlaceholderView(item.label, item.subtitle, self)
+
+    def _build_home_view(self) -> HomeView:
+        return HomeView(
+            self._viewmodel.config,
+            self,
+            database_path=self._database_path,
+            data_root=self._data_root,
+        )
+
+    def _on_database_changed(self, data_root: str, database_path: str) -> None:
+        """Reflect a completed restore or relocation in every open surface."""
+        self._data_root = Path(data_root)
+        self._database_path = Path(database_path)
+        self._database_status.setText("Database: configured")
+        self._database_status.setToolTip(database_path)
+        self.statusBar().showMessage(f"Database location: {database_path}", 8000)
+        self._replace_dashboard()
+
+    def _replace_dashboard(self) -> None:
+        previous = self._views.get("dashboard")
+        if previous is None:
+            return
+        was_current = self._stack.currentWidget() is previous
+        self._stack.removeWidget(previous)
+        previous.deleteLater()
+        replacement = self._build_home_view()
+        self._views["dashboard"] = replacement
+        self._stack.addWidget(replacement)
+        if was_current:
+            self._stack.setCurrentWidget(replacement)
 
     def _toggle_theme(self) -> None:
         new_mode = self._theme_manager.toggle()

@@ -41,6 +41,7 @@ from app.ui.viewmodels.shell_viewmodel import ShellViewModel
 logger = logging.getLogger("app.main")
 
 SMOKE_TEST_FLAG = "--smoke-test"
+RUN_BACKUP_FLAG = "--run-backup"
 SMOKE_TEST_DURATION_MS = 1200
 
 
@@ -179,9 +180,36 @@ def _run_recovery(
     return None
 
 
+def _schedule_startup_catch_up(window: MainWindow, context: AppContext) -> None:
+    """Ask the window to run a missed backup in the background after startup.
+
+    The delay keeps first paint responsive. The window owns the worker so a
+    closing application can cancel it cleanly.
+    """
+    if not context.config.backup_enabled:
+        logger.info("Startup catch-up skipped: automatic backups are disabled")
+        return
+    QTimer.singleShot(
+        constants.CATCH_UP_DELAY_MS,
+        window,
+        window.run_startup_catch_up,
+    )
+
+
 def run(argv: list[str] | None = None) -> int:
     """Run the desktop application and return a process exit code."""
     arguments = list(sys.argv if argv is None else argv)
+
+    # A packaged build is started with ``--run-backup`` by Task Scheduler. The
+    # backup must be possible while the GUI is closed, so this dispatch happens
+    # before Qt, logging, and the single-instance mutex. The runner has its own
+    # cross-process operation lock.
+    if RUN_BACKUP_FLAG in arguments:
+        arguments.remove(RUN_BACKUP_FLAG)
+        from app.tools.backup import main as run_backup_tool
+
+        return run_backup_tool(arguments)
+
     smoke_test = SMOKE_TEST_FLAG in arguments
     if smoke_test:
         arguments.remove(SMOKE_TEST_FLAG)
@@ -311,8 +339,13 @@ def run(argv: list[str] | None = None) -> int:
             theme_manager,
             database_path=context.database_path,
             data_root=Path(context.config.data_root) if context.config.data_root else None,
+            config_service=context.config_service,
+            database_runtime=context.runtime,
+            workspace_factory=context.workspace_factory,
         )
         window.show()
+
+        _schedule_startup_catch_up(window, context)
 
         application.aboutToQuit.connect(lambda: logger.info("Application shutdown requested"))
         logger.info("Main window shown")

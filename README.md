@@ -4,9 +4,10 @@ A standalone, offline Windows desktop application for small-business management.
 Built with Python 3.14, PySide6 (Qt Widgets), and a layered MVVM / application
 service architecture.
 
-**Current status: Phase 3 complete.** The project contains the technical
-foundation, the database layer, and the first-launch setup wizard. There are no
-business tables, business modules, or sample data yet.
+**Current status: Phase 4 complete.** The project contains the technical
+foundation, the database layer, the first-launch setup wizard, and the backup,
+restore, scheduled-runner, and relocation infrastructure. There are no business
+tables, business modules, or sample data yet.
 
 ## Implemented scope
 
@@ -32,7 +33,7 @@ Phase 2:
 - Explicit-commit unit of work and repository foundation.
 - Database health diagnostics and integrity checks.
 - INR `Money` value object with integer-paise storage rules.
-- Headless migration/health CLI and 239 tests at Phase 2 completion.
+- Headless migration/health CLI.
 
 Phase 3:
 
@@ -53,11 +54,39 @@ Phase 3:
 - Missing-drive, corrupt-config, and incomplete-config recovery dialog with
   Retry / Locate existing data / Start new setup / Exit. No C: fallback and no
   replacement database is ever created implicitly.
-- 341 passing tests (Phase 1, Phase 2, and Phase 3).
 
-Explicitly not implemented (later phases): backups, restore, scheduled backup,
-authentication, business profile, customers, suppliers, products, sales,
-purchases, inventory, accounting, expenses, and reports.
+Phase 4:
+
+- SQLite Online Backup API snapshots for manual, automatic, and safety backups
+  (never ordinary file copies of a live database).
+- Independent verification before publish: full integrity/foreign-key checks,
+  application identity, schema revision, SHA-256 checksum, and JSON sidecar
+  metadata; temporary/incomplete files are never published as successful backups.
+- Backup history from managed metadata/files with handling for missing files and
+  malformed metadata.
+- Cross-process backup-operation lock shared by backup, restore, relocation, and
+  upgrade; stale locks are recovered only after the owning process is proven dead.
+- Manual backup, history, verification status, progress, and restore UI in the
+  native PySide6 backup view.
+- Headless `python -m app.tools.backup` runner for scheduled execution, with
+  stable exit codes and retention applied after a successful run.
+- Windows Task Scheduler registration/update/removal (verified after creation),
+  daily 10:00 PM default schedule, configurable enable/time/retention, and
+  startup catch-up that avoids duplicate same-day backups.
+- Automatic-backup retention with safety/manual protection and protection of the
+  newest/last verified backups.
+- Staged restore workflow: re-verify candidate, create and verify safety backup,
+  acquire lock, close runtime, stage/replace, reopen and verify, with rollback
+  and recovery-required blocking on rollback failure.
+- Database relocation: validate destination, safety backup, SQLite Online Backup
+  API destination snapshot, full verification, atomic config update, reopen; old
+  database/config preserved on failure and old data root never deleted.
+- Pre-upgrade safety-backup gate in `UpgradeService` and the maintenance CLI;
+  normal startup still never migrates automatically.
+
+Explicitly not implemented (later phases): authentication, business profile,
+customers, suppliers, products, sales, purchases, inventory, accounting,
+expenses, and reports. No seeders or sample business data exist.
 
 ## Requirements
 
@@ -145,11 +174,32 @@ command that creates a file, and it refuses to overwrite an existing one.
 
 Startup never migrates automatically and never creates a database. A newer,
 unknown, older, or uninitialized schema is refused until an explicit maintenance
-action is taken; automatic upgrade waits for the Phase 4 safety-backup gate.
+action is taken. `upgrade`/`downgrade` through the maintenance path run the
+Phase 4 pre-upgrade safety-backup gate (verified database, global lock, verified
+Safety backup) before any schema change; a backup failure stops the change.
 
 The baseline contains no application tables. The only table is Alembic's
 `alembic_version`; file identity is stored in `PRAGMA application_id` and
 `PRAGMA user_version`.
+
+## Backups
+
+Manual backups, backup history, schedule settings, restore, and relocation are
+available from the Backup view in the application. The headless runner creates
+one verified backup of the configured database and is the entry point for
+Windows Task Scheduler:
+
+```powershell
+.\.venv\Scripts\python.exe -m app.tools.backup
+.\.venv\Scripts\python.exe -m app.tools.backup --scheduled
+.\.venv\Scripts\python.exe -m app.tools.backup --scheduled --config "%APPDATA%\GobindasBMS\config.json"
+```
+
+Stable exit codes: `0` verified backup published, `1` backup failed, `2`
+missing/unusable configuration, `3` operation lock held. A frozen build accepts
+`--run-backup` so the packaged executable can run the scheduled backup without
+the GUI. Backups, restore, relocation, and upgrades refuse to run when the
+configured drive is missing or another protected operation holds the lock.
 
 ## Configuration and logs
 
@@ -214,10 +264,12 @@ app/
 │   ├── paths.py                # %APPDATA% / %LOCALAPPDATA% paths
 │   └── single_instance.py      # Named Windows mutex guard
 ├── domain/
+│   ├── backup.py               # Backup/retention/catch-up domain rules
 │   └── value_objects/
 │       ├── currency.py         # Currency descriptor and INR default
 │       └── money.py            # INR value object and integer-paise conversion
 ├── infrastructure/
+│   ├── backup/                 # Snapshot, lock, metadata, history, scheduler, markers
 │   ├── database/
 │   │   ├── base.py             # Declarative base, naming convention, identity
 │   │   ├── config.py           # Injected absolute database configuration
@@ -233,17 +285,27 @@ app/
 │       ├── scaffold.py         # Additive directory creation and safe cleanup
 │       └── validation.py       # Read-only location validation and write probe
 ├── services/
+│   ├── backup_service.py       # Verified backup creation and publishing
+│   ├── backup_workspace.py     # Backup service wiring for GUI/runner
+│   ├── catch_up_service.py     # Startup missed-backup evaluation/execution
+│   ├── database_runtime.py     # Reopen/replace runtime for restore/relocation
+│   ├── relocation_service.py   # Verified database relocation workflow
+│   ├── restore_service.py      # Staged restore with rollback
+│   ├── retention_service.py    # Managed retention application
+│   ├── schedule_service.py     # Schedule settings and Task Scheduler sync
 │   ├── setup_service.py        # Validate → scaffold → initialize → persist
-│   └── startup_service.py      # Setup / recovery / ready startup assessment
+│   ├── startup_service.py      # Setup / recovery / ready startup assessment
+│   └── upgrade_service.py      # Pre-upgrade safety-backup gate
 ├── tools/
+│   ├── backup.py               # Headless scheduled/manual backup runner
 │   └── migrate.py              # Headless migration/health CLI
 └── ui/
     ├── main_window.py          # Shell layout and navigation
     ├── components/             # Sidebar, top bar, cards, placeholder view
-    ├── dialogs/                # Setup wizard, recovery, and error dialogs
+    ├── dialogs/                # Setup, recovery, backup settings, restore dialogs
     ├── themes/                 # Tokens, QSS generator, runtime theme manager
     ├── viewmodels/             # QtCore-only view models
-    └── views/                  # Dashboard foundation
+    └── views/                  # Dashboard and backup views
 migrations/                     # Alembic environment and version scripts
 alembic.ini                     # Script location; URL injected at runtime
 tests/                          # pytest unit, UI, database, and startup tests
@@ -252,9 +314,9 @@ docs/                           # Approved project documentation
 Reports/                        # Phase completion reports
 ```
 
-`app/repositories`, `app/modules`, and `backup_runner` are intentionally absent
-until the phases that need them. `app/services` currently contains only the
-setup and startup orchestration services.
+`app/repositories` and `app/modules` are intentionally absent until the phases
+that need them. The scheduled runner is implemented as `app/tools/backup.py`
+(headless, no Qt).
 
 ## Architecture rules in force
 
@@ -290,7 +352,7 @@ These boundaries are checked by `tests/test_architecture.py`.
 ## Documentation
 
 - `docs/BLUEPRINT.md` - product scope and open questions
-- `docs/ARCHITECTURE.md` - technical architecture and Phase 1–3 implementation records
+- `docs/ARCHITECTURE.md` - technical architecture and Phase 1–4 implementation records
 - `docs/DEVELOPMENT_ROADMAP.md` - phase plan and completion status
 - `docs/UI_UX_BLUEPRINT.md` - UI direction and design tokens
 - `docs/BACKUP_STRATEGY.md`, `docs/SECURITY_AND_DATA_PROTECTION.md`,
@@ -298,9 +360,11 @@ These boundaries are checked by `tests/test_architecture.py`.
 - `Reports/PHASE_01_REPORT.md` - Phase 1 completion report
 - `Reports/PHASE_02_REPORT.md` - Phase 2 completion report
 - `Reports/PHASE_03_REPORT.md` - Phase 3 completion report
+- `Reports/PHASE_04_REPORT.md` - Phase 4 completion report
 
 ## Next phase
 
-Phase 4 adds verified safety backups, manual backup, restore, retention, and the
-scheduled backup runner. It builds on the Phase 3 data root and does not start
-until the Phase 3 report is reviewed and authorized.
+Review `Reports/PHASE_04_REPORT.md` and explicitly authorize **Phase 5 — Main
+interface, theme, and reusable components**. Do not start Phase 5 without owner
+review/approval. Phase 4 established verified backup, restore, scheduling, and
+relocation foundations that must remain intact.

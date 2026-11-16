@@ -55,3 +55,59 @@ DATA_EXPORTS_EXCEL_DIR = "Excel"
 # mebibyte is a deliberately conservative floor that still lets the operating
 # system and SQLite finish the initial write. It is not a database-size estimate.
 MINIMUM_FREE_SPACE_BYTES = 1024 * 1024
+
+# ---------------------------------------------------------------------------
+# Backup, restore and relocation (Phase 4, BACKUP_STRATEGY.md).
+# ---------------------------------------------------------------------------
+BACKUP_FILENAME_PREFIX = "BusinessManagement"
+BACKUP_TIMESTAMP_FORMAT = "%Y-%m-%d_%H-%M-%S"
+BACKUP_METADATA_VERSION = 1
+BACKUP_METADATA_SUFFIX = ".meta.json"
+BACKUP_TEMP_SUFFIX = ".tmp"
+BACKUP_LOCK_FILENAME = ".backup.lock"
+BACKUP_STATE_FILENAME = "backup_state.json"
+BACKUP_LAST_ERROR_FILENAME = "backup_last_error.json"
+
+DEFAULT_BACKUP_ENABLED = True
+DEFAULT_BACKUP_TIME = "22:00"
+DEFAULT_BACKUP_RETENTION_DAYS = 30
+DEFAULT_BACKUP_KEEP_MINIMUM = 5
+BACKUP_RETENTION_MINIMUM_DAYS = 1
+BACKUP_RETENTION_MAXIMUM_DAYS = 3650
+BACKUP_KEEP_MINIMUM_FLOOR = 1
+BACKUP_KEEP_MINIMUM_CEILING = 100
+
+# Free-space reserve for preflight. A backup needs at least the source size
+# plus headroom for the temporary file, metadata, and filesystem slack.
+BACKUP_FREE_SPACE_FACTOR_PERCENT = 120
+BACKUP_FREE_SPACE_RESERVE_BYTES = 50 * 1024 * 1024
+
+# Restore and relocation artifacts (same volume as the live database).
+RESTORE_STAGING_FILENAME = ".restore-staging.db"
+RESTORE_MARKER_FILENAME = ".restore-in-progress.json"
+RELOCATION_MARKER_FILENAME = ".relocation-in-progress.json"
+RECOVERY_REQUIRED_MARKER_FILENAME = ".recovery-required.json"
+ROLLBACK_DIR_NAME = "rollback"
+
+# Backups older than this are not trustworthy evidence for retention, and an
+# interrupted operation may leave a temporary file behind (BACKUP_STRATEGY §9).
+STALE_TEMP_AGE_SECONDS = 24 * 60 * 60
+ROLLBACK_RETENTION_DAYS = 7
+
+# A stale lock may be reclaimed only after the owning process has been proven
+# dead. The reclaim guard serialises recovery between competing processes.
+LOCK_RECLAIM_SUFFIX = ".reclaim"
+
+# Windows Task Scheduler integration.
+SCHEDULED_TASK_NAME = r"GobindasBMS\DailyBackup"
+SCHEDULED_TASK_DESCRIPTION = "Gobindas Graphics Business Management System daily backup"
+
+# Headless backup runner exit codes (app.tools.backup).
+BACKUP_EXIT_SUCCESS = 0
+BACKUP_EXIT_FAILURE = 1
+BACKUP_EXIT_CONFIGURATION = 2
+BACKUP_EXIT_LOCKED = 3
+
+# Catch-up runs once per application session after this delay so the window is
+# responsive and first-launch work has settled.
+CATCH_UP_DELAY_MS = 15_000

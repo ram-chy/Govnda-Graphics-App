@@ -3,9 +3,9 @@
 | Field | Value |
 | --- | --- |
 | Document | DEVELOPMENT_ROADMAP.md |
-| Version | 1.1 |
-| Date | 2026-11-14 |
-| Status | Phases 0–3 complete; Phase 4 awaiting authorization |
+| Version | 1.2 |
+| Date | 2026-11-16 |
+| Status | Phases 0–4 complete; Phase 5 awaiting authorization |
 | Related | BLUEPRINT.md, ARCHITECTURE.md, DATABASE_SCHEMA.md, BACKUP_STRATEGY.md |
 
 ## 1. Principles
@@ -209,37 +209,55 @@ DoD:
 
 ### Phase 4 — Backup, restore, and scheduled runner
 
+**Status: complete (2026-11-16).** Report: `Reports/PHASE_04_REPORT.md`.
+
 Goal: trustworthy protection before any real business data is entered.
 
-Work:
+Work completed:
 
-- Backup core on stdlib `sqlite3`: preflight, Online Backup, verification, hash, atomic publish, sidecar metadata, history recording.
-- Backup lock and stale-lock recovery.
-- Manual backup UI + history (list, verify, open folder, delete manual with confirmation).
-- Retention job and preview.
-- Headless `backup_runner` entry point and PyInstaller spec (early dry run).
-- Task Scheduler create/update/verify/remove with the limitations from BACKUP_STRATEGY.md §6.
-- Startup catch-up logic and failure marker handling.
-- Restore workflow with safety backup, staging, swap, verification, restart, rollback.
-- Database relocation workflow.
-- Fault-injection tests and the manual drill.
+- Backup core on stdlib `sqlite3`: preflight, SQLite Online Backup API snapshot,
+  independent verification, SHA-256, JSON sidecar metadata, atomic publish, and
+  state/history recording.
+- Cross-process operation lock with stale-lock recovery only after the owning
+  process is proven inactive.
+- Native PySide6 backup view: manual backup, history, verification status,
+  progress, schedule/retention settings, restore, and relocation actions.
+- Retention service for managed automatic backups with safety/manual protection
+  and verified-backup preservation rules.
+- Headless `python -m app.tools.backup` runner (stable exit codes; packaged build
+  dispatch via `--run-backup`) and retention after successful runs.
+- Windows Task Scheduler create/update/query/remove integration with post-action
+  verification and no silent success on rejection.
+- Startup catch-up evaluation/execution for missed automatic backups, avoiding
+  duplicate same-day backups and respecting the operation lock.
+- Staged restore workflow: eligibility re-verification, safety backup, runtime
+  shutdown, staged replacement, reopen verification, rollback, and recovery-
+  required blocking if rollback cannot preserve a usable database.
+- Database relocation using SQLite Online Backup API to a verified destination
+  with atomic config update and preservation of the old database/data root.
+- Pre-upgrade safety-backup gate for schema changes (maintenance path);
+  automatic startup migration remains disabled.
 
-Deliverables:
+DoD status:
 
-- A verified backup can be created while the app is open and while it is closed.
-- Restore drill passes on a database with representative data.
-- Missing-drive and corrupt-backup scenarios are handled.
-
-DoD:
-
-- [ ] Backup uses the Online Backup API (code review + test proves WAL content is included).
-- [ ] Every published backup passes integrity and foreign-key checks.
-- [ ] No overwrite path exists (unique names, exclusive create).
-- [ ] Lock prevents concurrent backups (test with two processes).
-- [ ] Restore always has a safety backup or typed confirmation when impossible.
-- [ ] Failed restore preserves the original DB.
-- [ ] Task creation failure produces a working startup-catch-up fallback and a clear UI notice.
-- [ ] Manual drill recorded with timings and results.
+- [x] Backup uses the SQLite Online Backup API (implementation and tests).
+- [x] Published backups are independently verified (integrity, foreign-key,
+  identity, schema revision, checksum, metadata).
+- [x] No overwrite path for published backups (unique naming and exclusive/atomic
+  publish flow).
+- [x] Cross-process lock protects backup/restore/relocation/upgrade (unit/integration
+  tests, including contention/stale recovery cases).
+- [x] Restore requires a verified eligible backup and creates a verified safety
+  backup before replacement; staged replacement and rollback are implemented.
+- [x] Failed restore/relocation paths preserve the previous usable database/config
+  and emit recovery signals when rollback cannot guarantee safety.
+- [x] Task registration is verified; rejection is surfaced as failure. Startup
+  catch-up provides the fallback when scheduled execution is missed/unavailable.
+- [x] Automated test suite and Ruff pass in this environment (428 passed, Ruff
+  clean). A manual Windows drill (Task Scheduler registration/run with GUI
+  closed, GUI restore/relocation/missing-drive recovery on real Windows UI) was
+  **not executed** in this session and must be recorded separately before relying
+  on it as a release drill.
 
 **Gate:** data-protection review; approval to build the UI shell.
 
@@ -559,16 +577,15 @@ A deliverable is done only when:
 
 ## 10. Immediate next step
 
-Phase 1 is complete (2026-11-13), Phase 2 (SQLite/SQLAlchemy/Alembic foundation)
-is complete (2026-11-13), and Phase 3 (first-launch setup and database location)
-is complete (2026-11-14). They are recorded in `Reports/PHASE_01_REPORT.md`,
-`Reports/PHASE_02_REPORT.md`, and `Reports/PHASE_03_REPORT.md`. The owner
+Phases 1–4 are complete (2026-11-13 to 2026-11-16) and recorded in
+`Reports/PHASE_01_REPORT.md` through `Reports/PHASE_04_REPORT.md`. The owner
 confirmed INR as the default currency, and the affected documentation was
 reconciled on 2026-11-13.
 
-Review the Phase 3 report and explicitly authorize **Phase 4 — Backup, restore,
-and scheduled runner**. Do not start Phase 4 without approval. Phase 4 depends on
-the verified Phase 3 data root, configuration paths, database lifecycle, and
-startup recovery flow. It must add the Online Backup API snapshot, verification,
-retention, restore staging, and the pre-upgrade safety backup; it must not fake a
-restore or weaken the no-fallback rule.
+Review the Phase 4 report and explicitly authorize **Phase 5 — Main interface,
+theme, and reusable components**. Do not start Phase 5 without approval. Phase 5
+builds on the existing PySide6 shell and must preserve Phase 4 data-protection
+guarantees (verified backups, safe restore/relocation, scheduling/catch-up, and
+the pre-upgrade safety-backup gate). A manual Windows integration drill for the
+backup/restore/relocation/scheduler flows should be completed and recorded before
+treating those flows as release-verified.

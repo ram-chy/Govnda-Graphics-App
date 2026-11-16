@@ -27,6 +27,7 @@ from app.domain.value_objects.currency import Currency
 logger = logging.getLogger(__name__)
 
 _CURRENCY_CODE_PATTERN = re.compile(r"^[A-Z]{3}$")
+_BACKUP_TIME_PATTERN = re.compile(r"^(?:[01]\d|2[0-3]):[0-5]\d$")
 
 
 @dataclass(frozen=True, slots=True)
@@ -49,6 +50,13 @@ class AppConfig:
     # deliberately no default location so the application can never silently
     # create a database on C:.
     database_path: str | None = None
+    # Backup schedule and retention (Phase 4). These extend configuration schema
+    # version 1 as optional fields so a Phase 1-3 config remains loadable.
+    backup_enabled: bool = constants.DEFAULT_BACKUP_ENABLED
+    # Local Windows time, 24-hour HH:MM.
+    backup_time: str = constants.DEFAULT_BACKUP_TIME
+    backup_retention_days: int = constants.DEFAULT_BACKUP_RETENTION_DAYS
+    backup_keep_minimum: int = constants.DEFAULT_BACKUP_KEEP_MINIMUM
 
     @property
     def app_name(self) -> str:
@@ -78,6 +86,29 @@ class AppConfig:
             self,
             data_root=str(data_root),
             database_path=str(database_path),
+        )
+        updated.validate()
+        return updated
+
+    def with_backup_settings(
+        self,
+        *,
+        enabled: bool | None = None,
+        time: str | None = None,
+        retention_days: int | None = None,
+        keep_minimum: int | None = None,
+    ) -> AppConfig:
+        """Return a validated copy with updated backup schedule settings."""
+        updated = replace(
+            self,
+            backup_enabled=self.backup_enabled if enabled is None else enabled,
+            backup_time=self.backup_time if time is None else time,
+            backup_retention_days=(
+                self.backup_retention_days if retention_days is None else retention_days
+            ),
+            backup_keep_minimum=(
+                self.backup_keep_minimum if keep_minimum is None else keep_minimum
+            ),
         )
         updated.validate()
         return updated
@@ -139,6 +170,41 @@ class AppConfig:
             if not inside_root:
                 raise ConfigurationError("database_path must reside inside data_root")
 
+        if not isinstance(self.backup_enabled, bool):
+            raise ConfigurationError("backup_enabled must be true or false")
+        if not isinstance(self.backup_time, str) or not _BACKUP_TIME_PATTERN.match(
+            self.backup_time
+        ):
+            raise ConfigurationError("backup_time must be a 24-hour time in HH:MM form")
+        if (
+            isinstance(self.backup_retention_days, bool)
+            or not isinstance(self.backup_retention_days, int)
+            or not (
+                constants.BACKUP_RETENTION_MINIMUM_DAYS
+                <= self.backup_retention_days
+                <= constants.BACKUP_RETENTION_MAXIMUM_DAYS
+            )
+        ):
+            raise ConfigurationError(
+                "backup_retention_days must be an integer from "
+                f"{constants.BACKUP_RETENTION_MINIMUM_DAYS} to "
+                f"{constants.BACKUP_RETENTION_MAXIMUM_DAYS}"
+            )
+        if (
+            isinstance(self.backup_keep_minimum, bool)
+            or not isinstance(self.backup_keep_minimum, int)
+            or not (
+                constants.BACKUP_KEEP_MINIMUM_FLOOR
+                <= self.backup_keep_minimum
+                <= constants.BACKUP_KEEP_MINIMUM_CEILING
+            )
+        ):
+            raise ConfigurationError(
+                "backup_keep_minimum must be an integer from "
+                f"{constants.BACKUP_KEEP_MINIMUM_FLOOR} to "
+                f"{constants.BACKUP_KEEP_MINIMUM_CEILING}"
+            )
+
 
 def _read_field(data: Mapping[str, Any], key: str, default: Any) -> Any:
     value = data.get(key, default)
@@ -157,6 +223,13 @@ def _read_optional_str(data: Mapping[str, Any], key: str) -> str | None:
         return None
     if not isinstance(value, str):
         raise ConfigurationError(f"{key} must be a string or null")
+    return value
+
+
+def _read_bool(data: Mapping[str, Any], key: str, default: bool) -> bool:
+    value = data.get(key, default)
+    if not isinstance(value, bool):
+        raise ConfigurationError(f"{key} must be true or false")
     return value
 
 
@@ -180,6 +253,16 @@ def _config_from_mapping(data: Mapping[str, Any]) -> AppConfig:
         log_level=_read_field(data, "log_level", constants.DEFAULT_LOG_LEVEL),
         data_root=_read_optional_str(data, "data_root"),
         database_path=_read_optional_str(data, "database_path"),
+        backup_enabled=_read_bool(
+            data, "backup_enabled", constants.DEFAULT_BACKUP_ENABLED
+        ),
+        backup_time=_read_field(data, "backup_time", constants.DEFAULT_BACKUP_TIME),
+        backup_retention_days=_read_field(
+            data, "backup_retention_days", constants.DEFAULT_BACKUP_RETENTION_DAYS
+        ),
+        backup_keep_minimum=_read_field(
+            data, "backup_keep_minimum", constants.DEFAULT_BACKUP_KEEP_MINIMUM
+        ),
     )
     config.validate()
     return config
@@ -226,8 +309,14 @@ class ConfigService:
         """
         return self.load_with_status().config
 
-    def load_with_status(self) -> ConfigLoadResult:
-        """Load configuration and report whether it was missing or repaired."""
+    def load_with_status(self, *, quarantine_invalid: bool = True) -> ConfigLoadResult:
+        """Load configuration and report whether it was missing or repaired.
+
+        ``quarantine_invalid`` defaults to the application's behaviour: an
+        unreadable file is moved aside so the GUI can offer recovery. A headless
+        scheduled task passes ``False`` because a background run must never
+        rename the user's configuration file.
+        """
         if not self._config_path.exists():
             return ConfigLoadResult(AppConfig(), ConfigLoadStatus.MISSING)
 
@@ -244,10 +333,14 @@ class ConfigService:
             return ConfigLoadResult(config, ConfigLoadStatus.LOADED)
         except (json.JSONDecodeError, ConfigurationError) as exc:
             logger.warning(
-                "Configuration file is invalid and will be reset to defaults: %s (%s)",
+                "Configuration file is invalid: %s (%s)",
                 self._config_path,
                 exc,
             )
+            if not quarantine_invalid:
+                raise ConfigurationError(
+                    f"configuration file is invalid: {self._config_path}"
+                ) from exc
             quarantined = self._quarantine_invalid_file()
             return ConfigLoadResult(
                 AppConfig(),
@@ -268,6 +361,10 @@ class ConfigService:
             "log_level": config.log_level,
             "data_root": config.data_root,
             "database_path": config.database_path,
+            "backup_enabled": config.backup_enabled,
+            "backup_time": config.backup_time,
+            "backup_retention_days": config.backup_retention_days,
+            "backup_keep_minimum": config.backup_keep_minimum,
         }
 
         try:

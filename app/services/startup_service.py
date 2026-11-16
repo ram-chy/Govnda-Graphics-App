@@ -14,6 +14,14 @@ from pathlib import Path
 
 from app.core.config import AppConfig, ConfigLoadStatus, ConfigService
 from app.core.exceptions import AppError
+from app.infrastructure.backup.markers import (
+    RECOVERY_REQUIRED_MARKER,
+    RELOCATION_MARKER,
+    RESTORE_MARKER,
+    UPGRADE_MARKER,
+    MarkerStore,
+    find_blocking_marker,
+)
 from app.infrastructure.database.config import DatabaseConfig
 from app.infrastructure.database.engine import Database
 from app.infrastructure.database.health import (
@@ -52,6 +60,8 @@ class RecoveryReason(StrEnum):
     MIGRATION_REQUIRED = "migration_required"
     MIGRATION_UNSUPPORTED = "migration_unsupported"
     DATABASE_UNAVAILABLE = "database_unavailable"
+    INTERRUPTED_OPERATION = "interrupted_operation"
+    RECOVERY_REQUIRED = "recovery_required"
     UNKNOWN = "unknown"
 
 
@@ -211,6 +221,27 @@ class StartupService:
                 database_path=database_path,
             )
 
+        blocking = find_blocking_marker(database_path)
+        if blocking is not None:
+            kind, marker, marker_path = blocking
+            if kind in (RESTORE_MARKER, RECOVERY_REQUIRED_MARKER):
+                return self._recovery(
+                    config,
+                    loaded.status,
+                    reason=(
+                        RecoveryReason.RECOVERY_REQUIRED
+                        if kind == RECOVERY_REQUIRED_MARKER
+                        else RecoveryReason.INTERRUPTED_OPERATION
+                    ),
+                    message=_marker_message(kind, marker_path),
+                    data_root=data_root,
+                    database_path=database_path,
+                )
+            # Relocation and upgrade markers are confirmations, not locks. The
+            # configured database is verified below; only then is the marker
+            # cleared, so a crash cannot leave a half-replaced file unexamined.
+            logger.warning("Interrupted %s detected: %s", kind, marker_path)
+
         database = Database(DatabaseConfig(path=database_path))
         try:
             report = DatabaseDiagnostics(database).check(full=False)
@@ -224,6 +255,15 @@ class StartupService:
                     database_path=database_path,
                 )
             verify_database_for_startup(database)
+            if blocking is not None:
+                kind, _marker, marker_path = blocking
+                if kind in (RELOCATION_MARKER, UPGRADE_MARKER):
+                    MarkerStore(marker_path).clear()
+                    logger.warning(
+                        "Interrupted %s marker cleared after the database passed startup "
+                        "verification",
+                        kind,
+                    )
         except AppError as exc:
             database.shutdown()
             return self._recovery(
@@ -322,6 +362,25 @@ def _reason_for_health(status: DatabaseHealthStatus) -> RecoveryReason:
         DatabaseHealthStatus.MIGRATION_FAILED: RecoveryReason.MIGRATION_UNSUPPORTED,
         DatabaseHealthStatus.UNKNOWN_ERROR: RecoveryReason.UNKNOWN,
     }.get(status, RecoveryReason.UNKNOWN)
+
+
+def _marker_message(kind: str, marker_path: Path) -> str:
+    if kind == RECOVERY_REQUIRED_MARKER:
+        return (
+            "A previous restore or database move could not be completed and its rollback "
+            "could not be verified. The database was not opened because it may be damaged. "
+            "Restore a safety backup from the Backups folder before continuing."
+        )
+    if kind == RESTORE_MARKER:
+        return (
+            "A previous restore did not finish. The database was not opened because the live "
+            "file may have been partially replaced. Restore a safety backup from the Backups "
+            "folder, or locate a known-good database."
+        )
+    return (
+        f"A previous operation was interrupted ({marker_path.name}). The database was not "
+        "opened because its state could not be confirmed."
+    )
 
 
 __all__ = ["RecoveryReason", "StartupAssessment", "StartupMode", "StartupService"]

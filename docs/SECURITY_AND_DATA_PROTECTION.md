@@ -274,7 +274,7 @@ See BACKUP_STRATEGY.md for the operational detail.
 | Soft-deactivate | Masters use `is_active`; history remains |
 | Transaction atomicity | UoW commit/rollback; no partial postings |
 | Migration safety | Pre-upgrade verified backup; refuse newer schema; rollback on failure |
-| Phase 2 migration reality | Pending/newer/unknown schemas refuse startup; no automatic upgrade until the Phase 4 safety backup exists |
+| Phase 4 migration reality | Pending/newer/unknown schemas refuse startup; maintenance schema changes require a verified safety-backup gate; normal startup never auto-migrates |
 | Restore safety | Pre-restore safety backup; staged swap; rollback copy |
 | Backup retention guards | Never delete last/newest valid; manual/safety untouched |
 | Missing drive | Blocking error; no fallback; no auto-create |
@@ -465,8 +465,11 @@ See BACKUP_STRATEGY.md for the operational detail.
   that attempt and preserves every pre-existing file and folder.
 - The recovery dialog never creates a replacement database, never changes the
   saved path silently, and never opens an empty database.
-- Restore from backup is deliberately absent until Phase 4 can verify and stage
-  it. Presenting it earlier would be a false safety claim.
+- Restore is implemented in Phase 4 as a staged, verified workflow with a
+  mandatory safety backup and rollback (available from the Backup view for
+  verified managed backups). The startup recovery dialog does not yet expose a
+  direct restore action; it blocks unsafe states and points to recovery using
+  verified safety backups when required.
 
 ### 19.6 Residual risks
 
@@ -474,5 +477,7 @@ See BACKUP_STRATEGY.md for the operational detail.
   BitLocker remain the primary controls (Q-18).
 - Any process running as the same Windows user can read or modify the database.
 - Sync-client folders are not detected automatically in Phase 3.
-- Backup, restore, retention, and relocation controls remain Phase 4 work and
-  are not claimed here.
+- Backup, restore, retention, and relocation controls are implemented in
+  Phase 4 as staged, verified workflows (Online Backup API, checksums/metadata,
+  cross-process locking, safety backups, and rollback/recovery markers). Manual
+  Windows integration drills remain necessary before release reliance.

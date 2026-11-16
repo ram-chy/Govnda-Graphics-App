@@ -3,9 +3,9 @@
 | Field | Value |
 | --- | --- |
 | Document | BACKUP_STRATEGY.md |
-| Version | 1.2 |
-| Date | 2026-11-14 |
-| Status | Draft for review — backup not implemented; Phase 3 data-root setup is complete |
+| Version | 1.3 |
+| Date | 2026-11-16 |
+| Status | Implemented for Phase 4 (automated tests passing); manual Windows integration drill not executed in this session |
 | Priority | Core product feature |
 | Related | BLUEPRINT.md, ARCHITECTURE.md, DATABASE_SCHEMA.md, SECURITY_AND_DATA_PROTECTION.md |
 
@@ -84,11 +84,15 @@ Rules:
 - A corrupt config is moved to `config.corrupt-<timestamp>.json` and the recovery
   flow starts; business data is never touched.
 - Secrets (passwords, encryption keys) must never be stored in this file.
-- Phase 3 writes `data_root` and `database_path` atomically after the database is
-  created and verified. The config schema version remains `1` because
-  `data_root` is an optional backward-compatible field.
-- `backup.*` and `last_schema_revision` remain Phase 4 fields and are not written
-  yet. Future backup settings must extend this same file, not a competing one.
+- Phase 3 wrote `data_root` and `database_path` atomically after the database was
+  created and verified. The config schema version remains `1` because new fields
+  are optional and backward-compatible.
+- Phase 4 adds `backup_enabled`, `backup_time`, and `backup_retention_days`
+  (default false / 22:00 / 30 days) and persists schedule changes atomically in
+  the same `config.json`. `backup_keep_minimum` is currently an internal default
+  in constants (not a user-facing config field). Durable last-success/attempt
+  state is recorded in backup state files under the managed backup area, not in
+  `config.json`. No Windows credentials or secrets are stored.
 
 ### 3.2 Backup metadata sidecar
 
@@ -498,31 +502,25 @@ The Phase 3 implementation of this flow is recorded in ARCHITECTURE.md §18.8.
 
 ## 17. Phase 2 database compatibility (2026-11-13)
 
-Backup and restore are **not implemented** in Phase 2. The foundation was built to
-make the approved backup design implementable without rework:
+Backup and restore were **not implemented** in Phase 2. The foundation was built
+to make the approved backup design implementable without rework:
 
 - **Online Backup API ready.** The database is a normal SQLite file opened by
-  SQLAlchemy, so a future backup runner can use `sqlite3.Connection.backup()`.
+  SQLAlchemy, and the implementation now uses `sqlite3.Connection.backup()`.
   Runtime code never holds an exclusive lock and sets no
   `PRAGMA locking_mode=EXCLUSIVE`.
 - **WAL understood.** WAL is enabled with `synchronous=FULL`. The application
   performs a best-effort passive checkpoint on clean shutdown and then disposes
-  the engine. A backup taken from the live file must still use the Online Backup
-  API so WAL content is included.
+  the engine. Live backups use the Online Backup API so WAL content is included.
 - **Safe shutdown seam.** `AppContext.close()` disposes the engine from the entry
-  point's `finally` block. The future restore workflow can reuse this to ensure no
-  pooled connection touches a replaced file.
+  point's `finally` block. Restore and relocation reuse runtime shutdown/reopen
+  paths so no pooled connection touches a replaced file.
 - **Identity check.** `PRAGMA application_id = 1195525971` identifies a Gobindas
   database before a backup or restore is accepted.
-- **No automatic migration.** Phase 2 startup refuses a schema that needs an
-  upgrade because the pre-upgrade verified safety backup does not exist yet.
-  Phase 4 adds that backup gate.
-- **No destructive behaviour.** Health checks and startup checks never delete,
-  recreate, repair, or relocate a database.
-
-Phase 4 must add: Online Backup API snapshot, verification (`integrity_check`,
-hash, open test), sidecar metadata, retention, restore staging, and the
-pre-upgrade safety backup.
+- **No automatic migration.** Startup still never migrates automatically. Phase 4
+  adds the pre-upgrade safety-backup gate for maintenance-driven schema changes.
+- **No destructive behaviour.** Health/startup checks never delete, recreate,
+  repair, or relocate a database.
 
 ## 18. Phase 3 setup compatibility (2026-11-14)
 
@@ -588,3 +586,82 @@ Phase 4 can reuse:
 Phase 4 must add the backup lock, Online Backup snapshot, verification, sidecar
 metadata, retention, restore staging, and the pre-upgrade safety backup. No
 Phase 3 code claims those capabilities.
+
+## 19. Phase 4 implementation record (2026-11-16)
+
+Phase 4 implemented the backup/restore/relocation foundation in the existing
+modular-monolith architecture (domain rules in `app/domain/backup.py`;
+application services in `app/services/backup_service.py`,
+`restore_service.py`, `relocation_service.py`, `retention_service.py`,
+`schedule_service.py`, `catch_up_service.py`, `upgrade_service.py`; SQLite and
+filesystem infrastructure in `app/infrastructure/backup/*`; Qt UI in
+`app/ui/views/backup_view.py`, `app/ui/viewmodels/backup_viewmodel.py`, and
+dialogs).
+
+**Implemented behavior (verified by automated tests in this environment):**
+
+- Live backups use the SQLite Online Backup API (`sqlite3.Connection.backup`)
+  into a temporary file in the destination directory, followed by independent
+  reopen/verification (`quick_check`, `integrity_check`, `foreign_key_check`,
+  application identity, schema revision) and SHA-256 hashing.
+- JSON sidecar metadata is written atomically after a successful publish;
+  metadata is validated before trust. History treats missing files and malformed
+  metadata safely and does not present them as verified restore candidates.
+- Cross-process operation lock (`Backups/.backup.lock`) protects backup,
+  restore, relocation, and upgrade. Stale locks are not removed by age alone;
+  reclaim requires proof the owning process is not active.
+- Headless runner `python -m app.tools.backup` (and packaged `--run-backup`
+  dispatch) returns stable exit codes: 0 success, 1 backup failure, 2
+  configuration error, 3 lock held. Retention runs after a successful backup and
+  does not invalidate a published backup.
+- Windows Task Scheduler integration uses `schtasks.exe` with generated XML,
+  verifies the task after create/update, reports rejection, and removes/updates
+  using a stable task name. Settings are not saved as enabled on registration
+  failure.
+- Startup catch-up evaluates missed automatic backups using local time/state and
+  runs in the background when due, avoiding duplicates when a successful backup
+  already satisfies the schedule and skipping when the lock is held.
+- Restore re-verifies eligibility, creates a verified Safety backup, closes the
+  runtime, stages/replaces atomically, reopens and verifies, and rolls back on
+  failure. Recovery-required markers block unsafe normal startup if rollback
+  cannot leave a usable database.
+- Relocation validates the destination with the Phase 3 validator, creates a
+  verified Safety backup, produces and verifies a destination snapshot via Online
+  Backup API, updates configuration atomically, reopens from the new location,
+  and preserves the old database/config/data root on failure.
+- `UpgradeService` and the maintenance migration path enforce a pre-upgrade
+  safety-backup gate before schema changes. Normal startup migration remains
+  disabled.
+
+**Deviations/notes from the draft strategy text:**
+
+- Backup filenames are implemented as sortable unique names in the
+  `BusinessManagement_YYYY-MM-DD_HH-MM-SS_TYPE.db` form with collision suffixes,
+  rather than the earlier `BMS_<mode>_...` example. Sidecars are stored as
+  `<backup>.meta.json`.
+- Schedule/retention settings stored in `config.json` are `backup_enabled`,
+  `backup_time`, and `backup_retention_days`; `keep_minimum` uses an internal
+  default constant. Last success/attempt/failure state is stored in managed
+  backup state files rather than `config.json` fields.
+- Manual backup deletion from history/UI is not exposed as a general action in
+  this phase; retention is applied to managed automatic backups according to the
+  implemented safety rules. Manual/safety backups are not auto-deleted by the
+  automatic retention path.
+- A dedicated PyInstaller spec/dry run for a separate backup executable was not
+  added in this phase; the packaged application path is handled by the main
+  entry point `--run-backup` dispatch to `app.tools.backup`. A separate runner
+  spec may still be added in packaging hardening if required.
+- The draft documents some additional planned artifacts/behaviors (for example
+  `%LOCALAPPDATA%...\backup.log` and `backup_last_error.json`, relocation marker
+  naming, and certain UI affordances). The implementation records operation/state
+  through the existing logging and managed backup state/marker mechanisms; any
+  remaining gaps are limitations, not claims of completion.
+
+**Testing status:**
+
+- Automated: `pytest -q` → 428 passed; `ruff check app tests` → all checks passed
+  (after fixing two pre-existing line-length issues in Phase 4 tests).
+- Windows integration (manual/real): Task Scheduler registration and execution
+  with the GUI closed, GUI-driven restore/relocation/missing-drive recovery, and
+  the full manual drill from §12.2 were **not executed** in this session. Do not
+  treat these as passed based on mocks alone.
