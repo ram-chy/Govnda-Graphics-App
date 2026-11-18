@@ -3,10 +3,10 @@
 | Field | Value |
 | --- | --- |
 | Document | DEVELOPMENT_ROADMAP.md |
-| Version | 1.3 |
-| Date | 2026-11-17 |
-| Status | Phases 0–5 complete; Phase 5 owner review pending, Phase 6 not started |
-| Related | BLUEPRINT.md, ARCHITECTURE.md, DATABASE_SCHEMA.md, BACKUP_STRATEGY.md |
+| Version | 1.5 |
+| Date | 2026-11-18 |
+| Status | Phases 0–6 complete; Phase 7 planning and approval gate prepared; owner answers pending; no business implementation started |
+| Related | BLUEPRINT.md, ARCHITECTURE.md, DATABASE_SCHEMA.md, BACKUP_STRATEGY.md, BUSINESS_REQUIREMENTS.md, BUSINESS_WORKFLOWS.md, MODULE_SPECIFICATIONS.md, BUSINESS_RULES.md, REPORTING_REQUIREMENTS.md, OPEN_DECISIONS.md, PHASE_07_OWNER_DECISION_WORKSHEET.md, PHASE_07_FIRST_MODULE_SPECIFICATION.md, PHASE_07_IMPLEMENTATION_READINESS.md |
 
 ## 1. Principles
 
@@ -21,15 +21,18 @@
 ## 2. Phase map and dependencies
 
 ```text
-Phase 0 ─→ Phase 1 ─→ Phase 2 ─→ Phase 3 ─→ Phase 4 ─→ Phase 5 ─→ Phase 7 ─→ Phase 8 ─→ Phase 9 ─→ Phase 10
-                                      │                     │
-                                      └──── Phase 6 (conditional, only if auth approved)
-                                                                                   └→ Phase 11 ─→ Phase 12
+Phase 0 ─→ Phase 1 ─→ Phase 2 ─→ Phase 3 ─→ Phase 4 ─→ Phase 5 ─→ Phase 6 ─→ Phase 7 planning/gate ─→ First approved business module ─→ Phase 8 ─→ Phase 9 ─→ Phase 10 ─→ Phase 11 ─→ Phase 12
+
+Historical/deferred auth candidate (formerly Phase 6):
+Q-04 / AQ-05 decision ─→ renumbered auth phase, only if required
 ```
 
-- Phase 6 is optional and can run after Phase 5 if authentication is approved.
+- Phase 6 is the completed business requirements, workflows, and module-planning documentation phase. It is not authentication implementation.
+- Phase 7 is now the owner-decision and first-module specification approval gate. It is documentation-only and does not authorize implementation.
+- The first approved business module is currently recommended as Business Settings — Business Profile only, but that recommendation is not owner approval.
+- The historical authentication phase remains conditional and deferred. If Q-04/AQ-05 approves roles, it must be renumbered and placed according to the modules it affects.
 - Phase 4 depends on Phase 2 (database) and Phase 3 (known data root), not on the full UI.
-- Phase 7 (master data) needs the application shell from Phase 5.
+- Business master-data implementation needs the application shell from Phase 5 and owner approval of the module-specific rules in `OPEN_DECISIONS.md`.
 - Phase 11 starts after all functional phases; some hardening work (backup drills, accessibility, performance tests) is continuous.
 
 | Phase | Depends on | Can run in parallel with |
@@ -40,13 +43,15 @@ Phase 0 ─→ Phase 1 ─→ Phase 2 ─→ Phase 3 ─→ Phase 4 ─→ Phase
 | 3 | 2 | Backup core prototype (temp DBs only) |
 | 4 | 2, 3 | Phase 5 shell |
 | 5 | 1 | Phase 4 backend |
-| 6 | 5 (if approved) | Phase 7 |
-| 7 | 5 | Phase 6 |
-| 8 | 7 | — |
-| 9 | 8 | Report queries |
-| 10 | 8, 9 | Dashboard polish |
-| 11 | 7–10 | Packaging dry runs |
+| 6 | 5 and explicit Phase 6 authorization | Owner review of remaining open decisions |
+| 7 planning/gate | 6 and explicit Phase 7 authorization | Review of non-blocking decisions |
+| First business implementation | Owner answers, approved first-module spec, readiness PASS | Deferred auth decision |
+| 8 | First business implementation and approved transaction rules | Report query planning |
+| 9 | 8, approved accounting depth | Report queries |
+| 10 | 8, 9, approved report definitions | Dashboard polish |
+| 11 | First business implementation through 10 | Packaging dry runs |
 | 12 | 11 | — |
+| Deferred auth | Q-04/AQ-05 approval | Later module work depending on affected rules |
 
 ## 3. Phase details
 
@@ -313,10 +318,80 @@ DoD status:
       DPI review remain manual release/hardening tasks; the corresponding screens
       or approved metric definitions do not exist yet.
 
-**Gate:** owner UI/UX review against UI_UX_BLUEPRINT.md; explicit authorization is
-required before master data or Phase 6 work begins.
+**Gate:** owner UI/UX review against UI_UX_BLUEPRINT.md; explicit authorization was
+required before Phase 6 planning began and remains required before master data or
+any other business implementation.
 
-### Phase 6 — Authentication and users (conditional)
+### Phase 6 — Business requirements, workflows & module planning
+
+**Status: complete (2026-11-18).** Report: `Reports/PHASE_06_REPORT.md`.
+
+Goal: define the business blueprint before any business module is implemented. This was a documentation-only phase; no code, schema, migration, business data, or authentication was added.
+
+Deliverables:
+
+- [x] `docs/BUSINESS_REQUIREMENTS.md` — product scope, confirmed constraints, proposed requirements, out-of-scope areas.
+- [x] `docs/BUSINESS_WORKFLOWS.md` — confirmed implemented workflows and proposed business workflows with actors, steps, states, failures, and outputs.
+- [x] `docs/MODULE_SPECIFICATIONS.md` — module boundaries, shared services, dependencies, and functional data requirements.
+- [x] `docs/BUSINESS_RULES.md` — confirmed conventions, provisional defaults, open alternatives, approval policies, and proposed permissions.
+- [x] `docs/REPORTING_REQUIREMENTS.md` — report catalogue, metric definitions needed, exports, integrity, and access requirements.
+- [x] `docs/OPEN_DECISIONS.md` — all decisions requiring owner confirmation before implementation.
+- [x] This roadmap updated for Phase 6 completion and proposed next phases.
+- [x] `Reports/PHASE_06_REPORT.md` created.
+
+Definition of done:
+
+- [x] Entire repository structure, master docs, Phase 1–5 reports, navigation/placeholders, layer boundaries, and Git state inspected.
+- [x] Confirmed items separated from proposals, clarifications, and out-of-scope items.
+- [x] No business rule was selected silently from a provisional default.
+- [x] Existing decisions and documentation preserved.
+- [x] No database migration, business table, seed data, auth implementation, or unrelated code change made.
+- [x] No commit, amend, rebase, or push performed.
+- [ ] Owner review and explicit decision on the minimum Phase 7 prerequisite set in `OPEN_DECISIONS.md` §7.
+
+**Recommended first business implementation scope after owner approval:** business settings, customers, suppliers, units/categories, and product/service catalogue as vertical slices, with no transaction posting until tax, discount, numbering, payment, and correction rules are decided. This is now recorded below under the first implementation candidate.
+
+**Gate:** owner approval of Phase 6 planning was required before Phase 7 planning began. The explicit Phase 7 brief authorized the planning/approval-gate documentation, but owner answers and explicit approval are still required before any business implementation.
+
+### Phase 7 — Owner decisions & first module specification
+
+**Status: planning complete (2026-11-18).** Report: `Reports/PHASE_07_REPORT.md`.
+
+**Implementation status: NOT READY.** Owner answers and explicit first-module approval are still pending.
+
+Goal: resolve the business decisions that block implementation and prepare a draft owner-approved specification for the first business module. This is a documentation and approval-gate phase only.
+
+Deliverables:
+
+- [x] `docs/PHASE_07_OWNER_DECISION_WORKSHEET.md` — grouped decision questions, alternatives, consequences, dependencies, statuses, and owner-answer fields.
+- [x] `docs/PHASE_07_FIRST_MODULE_SPECIFICATION.md` — draft specification for the recommended first module.
+- [x] `docs/PHASE_07_IMPLEMENTATION_READINESS.md` — readiness assessment and owner action checklist.
+- [x] `docs/OPEN_DECISIONS.md` updated only for Phase 7 traceability/status; no unanswered decision marked approved.
+- [x] This roadmap updated for Phase 7 planning and the approval gate.
+- [x] `Reports/PHASE_07_REPORT.md` created.
+
+Definition of done:
+
+- [x] Project structure, Git state, Phase 1–6 reports, and required source documents inspected.
+- [x] Every blocking decision from Phase 6 represented with preserved IDs.
+- [x] No unanswered decision marked approved.
+- [x] No proposed requirement represented as confirmed.
+- [x] Recommended first module selected from dependencies and approved requirements.
+- [x] First-module dependencies clearly explained.
+- [x] Existing architecture, database, backup, and security decisions preserved.
+- [x] No code, migration, table, model, dependency, seed data, auth, or application behavior changed.
+- [x] No commit, amend, rebase, reset, clean, or push performed.
+- [ ] Owner answers recorded.
+- [ ] First-module specification explicitly approved.
+- [ ] Readiness re-check passed.
+
+**Recommended first module:** Business Settings — Business Profile only. This is a planning recommendation, not approval.
+
+**Gate:** owner answers the worksheet, approves the first-module specification, and a readiness re-check records PASS. Work stops before any business implementation until this gate passes.
+
+### Historical/deferred — Authentication and users (conditional; formerly listed as Phase 6)
+
+This section is preserved from the earlier roadmap, where authentication was labelled Phase 6. Phase 6 is now the completed business-planning documentation phase. If Q-04/AQ-05 approves login and roles, this deferred work must be renumbered and sequenced according to the modules it affects.
 
 **Only if Q-04 requires it.** If single-user, record "not applicable" and skip.
 
@@ -338,9 +413,13 @@ DoD:
 
 **Gate:** security review of the auth model.
 
-### Phase 7 — Business master data
+### First implementation candidate (pending owner approval) — Business master data
+
+This content was formerly labelled Phase 7 in this roadmap. It is preserved as the next business implementation candidate after the Phase 7 approval gate. It is not approved and must be revised if the owner approves a different first module.
 
 Goal: the reference data needed by transactions.
+
+Prerequisite: owner approval of the specific field list, duplicate policy, and archival behavior from `OPEN_DECISIONS.md` (`B6-09`, `B6-13`, `B6-11`) and the applicable rules in `BUSINESS_RULES.md`.
 
 Work (one vertical slice at a time):
 
@@ -367,6 +446,8 @@ DoD per entity:
 ### Phase 8 — Purchases, sales, and inventory
 
 Goal: the core operational loop with correct posting.
+
+Prerequisite: owner decisions on Q-03, Q-07, Q-08, Q-09, Q-10, Q-13, Q-14, Q-05/Q-06 if inventory is included, and the `B6-01`, `B6-02`, `B6-05`, `B6-06`, `B6-07` discovery decisions. Provisional defaults in `BUSINESS_RULES.md` are not implementation authority.
 
 Work:
 
@@ -601,16 +682,22 @@ A deliverable is done only when:
 
 ## 10. Immediate next step
 
-Phases 1–5 are complete (2026-11-13 to 2026-11-17) and recorded in
-`Reports/PHASE_01_REPORT.md` through `Reports/PHASE_05_REPORT.md`. The owner
-confirmed INR as the default currency, and the affected documentation was
-reconciled on 2026-11-13.
+Phases 1–6 are complete, and Phase 7 planning/approval-gate documentation is
+complete (2026-11-18). Reports are in `Reports/PHASE_01_REPORT.md` through
+`Reports/PHASE_07_REPORT.md`. The owner confirmed INR and the Indian fiscal year;
+the affected documentation was reconciled during earlier phases.
 
-Review `Reports/PHASE_05_REPORT.md` and explicitly authorize the next phase. Do
-not start Phase 6 authentication, master data, or any business phase without that
-authorization. Phase 5 preserved the Phase 4 data-protection guarantees
-(verified backups, safe restore/relocation, scheduling/catch-up, and the
-pre-upgrade safety-backup gate). A manual Windows integration drill for the
-backup/restore/relocation/scheduler flows and real Windows visual/DPI walkthroughs
-at 100%, 125%, and 150% remain prerequisites before treating those flows as
-release-verified.
+Review `docs/PHASE_07_OWNER_DECISION_WORKSHEET.md`,
+`docs/PHASE_07_FIRST_MODULE_SPECIFICATION.md`,
+`docs/PHASE_07_IMPLEMENTATION_READINESS.md`, and `Reports/PHASE_07_REPORT.md`.
+Answer every decision or mark "Not decided yet", then explicitly approve or
+correct the recommended first module specification. Implementation readiness is
+NOT READY until those answers are recorded and a readiness re-check passes. Do
+not start master data, transactions, authentication, or any other business
+implementation without that authorization.
+
+Phase 5 preserved the Phase 4 data-protection guarantees (verified backups, safe
+restore/relocation, scheduling/catch-up, and the pre-upgrade safety-backup gate).
+A manual Windows integration drill for the backup/restore/relocation/scheduler
+flows and real Windows visual/DPI walkthroughs at 100%, 125%, and 150% remain
+prerequisites before treating those flows as release-verified.
