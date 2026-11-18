@@ -79,7 +79,7 @@ class Sidebar(QFrame):
         nav_container = QWidget(scroll)
         nav_layout = QVBoxLayout(nav_container)
         nav_layout.setContentsMargins(0, 0, 0, 0)
-        nav_layout.setSpacing(2)
+        nav_layout.setSpacing(METRICS.space_1)
 
         for group in groups:
             group_label = QLabel(group.title, nav_container)

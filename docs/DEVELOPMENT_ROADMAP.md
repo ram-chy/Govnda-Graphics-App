@@ -3,9 +3,9 @@
 | Field | Value |
 | --- | --- |
 | Document | DEVELOPMENT_ROADMAP.md |
-| Version | 1.2 |
-| Date | 2026-11-16 |
-| Status | Phases 0–4 complete; Phase 5 awaiting authorization |
+| Version | 1.3 |
+| Date | 2026-11-17 |
+| Status | Phases 0–5 complete; Phase 5 owner review pending, Phase 6 not started |
 | Related | BLUEPRINT.md, ARCHITECTURE.md, DATABASE_SCHEMA.md, BACKUP_STRATEGY.md |
 
 ## 1. Principles
@@ -263,34 +263,58 @@ DoD status:
 
 ### Phase 5 — Main interface, theme, and reusable components
 
-Goal: the shell and design system that every module uses.
+**Status: complete (2026-11-17).** Report: `Reports/PHASE_05_REPORT.md`.
 
-Work:
+Goal: refine the existing PySide6 shell into a consistent, accessible, polished
+desktop UI without adding business functionality. The authoritative scope was the
+Phase 5 UX brief, which superseded the earlier demo-list/fake-data deliverables
+listed in this roadmap.
 
-- Token module, light/dark QSS generator, system-theme detection, runtime switch.
-- Main window, sidebar, top bar, status bar, navigation registry, lazy views.
-- Base ViewModel, worker/thread helper, error presenter, toast/banner.
-- `DataTable` + base table model, filter bar, pagination, empty/error/loading states.
-- Form primitives (text, money, quantity, date, party, product pickers), validation display.
-- Confirm dialog, busy overlay, page header, KPI/card components.
-- Window geometry/state persistence with multi-monitor safety.
-- UI smoke tests and a development gallery (not shipped).
-- Dashboard skeleton with placeholder data (clearly labelled; not fake business data in the DB).
+Work completed:
 
-Deliverables:
+- [x] Final design tokens for palettes, typography, spacing, radii, control
+  heights, shell dimensions, chart palettes, and dialog/wizard sizes.
+- [x] Single token-driven QSS template with explicit `px` units and tests against
+  unresolved placeholders/unitless lengths; runtime light/dark/system switching
+  and Qt palette synchronisation preserved.
+- [x] Shell refinement: token-driven sizing, accessible status labels, latest
+  verified backup status, `F5` refresh shortcut, and `QSettings` persistence of
+  geometry, window state, and current navigation with multi-monitor safety.
+- [x] Dashboard presentation using only verified environment facts, with an
+  explicit no-business-records empty state; no fake KPIs, charts, or seed data.
+- [x] Scrollable dashboard and backup views with token margins and wrapped-path
+  handling.
+- [x] Reusable `StatusBadge`, `EmptyState`, `Toast`, `DetailCard`,
+  `make_button()`, and `set_dialog_size()` components.
+- [x] Setup, recovery, restore confirmation, backup settings, and fatal-error
+  dialog refinements: consistent sizing, defaults, tab order, accessible names,
+  and asynchronous Task Scheduler status.
+- [x] Backup UI states: empty, unavailable, busy, verified-only restore, status
+  feedback, toast on success, modal error on decisions, and non-modal warning on
+  history read failure.
+- [x] Programmatic offscreen smoke checks at scale factors 1, 1.25, and 1.5.
 
-- A navigation shell with a working dashboard shell and one demo list/form using fake in-memory data (not seed data in the database).
-- Both themes usable at 100% and 150% DPI.
+Deliberately deferred under the Phase 5 brief:
 
-DoD:
+- Icon-rail collapse and an approved SVG icon family (no icon set exists).
+- `DataTable`, form primitives, component gallery, KPI/chart cards, and skeleton
+  loading (owned by later business/report phases).
+- Real Windows visual/DPI walkthroughs and real Windows backup integration drills.
 
-- [ ] No module hard-codes colors/fonts outside tokens.
-- [ ] Table sorting/filtering/pagination works on a synthetic 10k-row dataset without blocking.
-- [ ] Keyboard-only navigation works for the shell.
-- [ ] All components handle loading/empty/error.
-- [ ] ViewModels are testable without widgets.
+DoD status:
 
-**Gate:** UI/UX review against UI_UX_BLUEPRINT.md; approval for master data.
+- [x] No module hard-codes colors/fonts/spacing outside tokens.
+- [x] Theme switching, palette synchronisation, shell persistence, F5 refresh,
+  accessibility names, backup states, dialog defaults, and feedback are covered
+  by automated tests.
+- [x] Existing Phase 1–4 regression suite remains green: 448 tests passed.
+- [x] Ruff passes across `app` and `tests`.
+- [ ] Keyboard-only walkthrough, 10k-row table benchmark, and real Windows visual
+      DPI review remain manual release/hardening tasks; the corresponding screens
+      or approved metric definitions do not exist yet.
+
+**Gate:** owner UI/UX review against UI_UX_BLUEPRINT.md; explicit authorization is
+required before master data or Phase 6 work begins.
 
 ### Phase 6 — Authentication and users (conditional)
 
@@ -577,15 +601,16 @@ A deliverable is done only when:
 
 ## 10. Immediate next step
 
-Phases 1–4 are complete (2026-11-13 to 2026-11-16) and recorded in
-`Reports/PHASE_01_REPORT.md` through `Reports/PHASE_04_REPORT.md`. The owner
+Phases 1–5 are complete (2026-11-13 to 2026-11-17) and recorded in
+`Reports/PHASE_01_REPORT.md` through `Reports/PHASE_05_REPORT.md`. The owner
 confirmed INR as the default currency, and the affected documentation was
 reconciled on 2026-11-13.
 
-Review the Phase 4 report and explicitly authorize **Phase 5 — Main interface,
-theme, and reusable components**. Do not start Phase 5 without approval. Phase 5
-builds on the existing PySide6 shell and must preserve Phase 4 data-protection
-guarantees (verified backups, safe restore/relocation, scheduling/catch-up, and
-the pre-upgrade safety-backup gate). A manual Windows integration drill for the
-backup/restore/relocation/scheduler flows should be completed and recorded before
-treating those flows as release-verified.
+Review `Reports/PHASE_05_REPORT.md` and explicitly authorize the next phase. Do
+not start Phase 6 authentication, master data, or any business phase without that
+authorization. Phase 5 preserved the Phase 4 data-protection guarantees
+(verified backups, safe restore/relocation, scheduling/catch-up, and the
+pre-upgrade safety-backup gate). A manual Windows integration drill for the
+backup/restore/relocation/scheduler flows and real Windows visual/DPI walkthroughs
+at 100%, 125%, and 150% remain prerequisites before treating those flows as
+release-verified.

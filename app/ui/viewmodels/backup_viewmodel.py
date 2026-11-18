@@ -66,6 +66,8 @@ class BackupViewModel(QObject):
     status_message = Signal(str)
     operation_succeeded = Signal(str)
     operation_failed = Signal(str)
+    read_failed = Signal(str)
+    task_status = Signal(str)
     database_changed = Signal(str, str)
     schedule_changed = Signal(object)
 
@@ -238,6 +240,19 @@ class BackupViewModel(QObject):
 
         return self._start("Checking for a missed automatic backup", job, success)
 
+    def load_task_status(self) -> None:
+        """Read Task Scheduler status off the GUI thread and emit it when ready."""
+
+        def job(_progress) -> str:
+            return self.task_status_text()
+
+        self._runner.submit(
+            job,
+            on_progress=lambda _percent, _message: None,
+            on_success=lambda value: self.task_status.emit(str(value)),
+            on_failure=lambda message, _detail: self.task_status.emit(message),
+        )
+
     def task_status_text(self) -> str:
         workspace = self.workspace
         if workspace is None:
@@ -301,9 +316,11 @@ class BackupViewModel(QObject):
         self.refresh()
 
     def _on_read_failure(self, user_message: str, detail: str) -> None:
+        # A failed history read is routine (for example a drive not mounted yet).
+        # It is reported in the status strip, not as a blocking modal dialog.
         logger.warning("Backup history could not be read: %s (%s)", user_message, detail)
         self._finish()
-        self.operation_failed.emit(user_message)
+        self.read_failed.emit(user_message)
 
     def _finish(self) -> None:
         if self._busy:

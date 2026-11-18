@@ -23,7 +23,6 @@ from PySide6.QtWidgets import (
     QLabel,
     QLineEdit,
     QProgressBar,
-    QPushButton,
     QScrollArea,
     QStackedWidget,
     QTreeWidget,
@@ -37,6 +36,7 @@ from app.core.config import AppConfig
 from app.core.exceptions import AppError
 from app.core.logging_config import new_correlation_id
 from app.services.setup_service import SetupPersistenceError, SetupResult, SetupService
+from app.ui.components.controls import make_button, set_dialog_size
 from app.ui.themes.tokens import METRICS
 from app.ui.viewmodels.setup_viewmodel import SetupSummary, SetupViewModel
 
@@ -119,8 +119,13 @@ class SetupWizard(QDialog):
         self.setObjectName("SetupWizard")
         self.setWindowTitle(f"Set up {constants.APP_SHORT_NAME}")
         self.setModal(True)
-        self.resize(860, 660)
-        self.setMinimumSize(720, 560)
+        set_dialog_size(
+            self,
+            METRICS.wizard_width,
+            METRICS.wizard_height,
+            minimum_width=METRICS.wizard_minimum_width,
+            minimum_height=METRICS.wizard_minimum_height,
+        )
 
         self._viewmodel = SetupViewModel(service, base_config)
         self._setup_result: SetupResult | None = None
@@ -301,10 +306,11 @@ class SetupWizard(QDialog):
         self._path_edit = QLineEdit(page)
         self._path_edit.setPlaceholderText(r"Example: D:\GobindasBusiness")
         self._path_edit.setClearButtonEnabled(True)
+        self._path_edit.setAccessibleName("Business data root folder")
+        path_label.setBuddy(self._path_edit)
         self._path_edit.textChanged.connect(self._on_path_changed)
         path_row.addWidget(self._path_edit, 1)
-        self._browse_button = QPushButton("Browse...", page)
-        self._browse_button.setProperty("secondary", True)
+        self._browse_button = make_button("Browse...", page, variant="secondary")
         self._browse_button.clicked.connect(self._browse)
         path_row.addWidget(self._browse_button)
         layout.addLayout(path_row)
@@ -360,6 +366,9 @@ class SetupWizard(QDialog):
         self._review_tree.setHeaderHidden(True)
         self._review_tree.setColumnCount(1)
         self._review_tree.setAlternatingRowColors(True)
+        self._review_tree.setWordWrap(False)
+        self._review_tree.setTextElideMode(Qt.TextElideMode.ElideRight)
+        self._review_tree.setAccessibleName("Planned folders and purposes")
         layout.addWidget(self._review_tree, 1)
 
         database_caption = QLabel("Database file", page)
@@ -436,12 +445,13 @@ class SetupWizard(QDialog):
 
         failure_buttons = QHBoxLayout()
         failure_buttons.setSpacing(METRICS.space_2)
-        self._retry_persist_button = QPushButton("Retry saving the location", page)
+        self._retry_persist_button = make_button("Retry saving the location", page)
         self._retry_persist_button.clicked.connect(self._retry_persist)
         self._retry_persist_button.hide()
         failure_buttons.addWidget(self._retry_persist_button)
-        self._choose_location_button = QPushButton("Choose another folder", page)
-        self._choose_location_button.setProperty("secondary", True)
+        self._choose_location_button = make_button(
+            "Choose another folder", page, variant="secondary"
+        )
         self._choose_location_button.clicked.connect(self._return_to_location)
         self._choose_location_button.hide()
         failure_buttons.addWidget(self._choose_location_button)
@@ -505,20 +515,19 @@ class SetupWizard(QDialog):
         row.setSpacing(METRICS.space_2)
         row.addStretch(1)
 
-        self._back_button = QPushButton("Back", footer)
-        self._back_button.setProperty("secondary", True)
+        self._back_button = make_button("Back", footer, variant="secondary")
         self._back_button.clicked.connect(self._go_back)
         row.addWidget(self._back_button)
 
-        self._cancel_button = QPushButton("Exit setup", footer)
-        self._cancel_button.setProperty("secondary", True)
+        self._cancel_button = make_button("Exit setup", footer, variant="secondary")
         self._cancel_button.clicked.connect(self.reject)
         row.addWidget(self._cancel_button)
 
-        self._next_button = QPushButton("Get started", footer)
-        self._next_button.setDefault(True)
+        self._next_button = make_button("Get started", footer, default=True)
         self._next_button.clicked.connect(self._go_next)
         row.addWidget(self._next_button)
+        self.setTabOrder(self._back_button, self._cancel_button)
+        self.setTabOrder(self._cancel_button, self._next_button)
         return footer
 
     # ---------------------------------------------------------------- behaviour
@@ -647,12 +656,12 @@ class SetupWizard(QDialog):
 
             state = QLabel(check.status.value.upper(), row)
             state.setProperty("checkStatus", check.status.value)
-            state.setMinimumWidth(64)
+            state.setMinimumWidth(METRICS.space_8 * 2)
             row_layout.addWidget(state, 0, Qt.AlignmentFlag.AlignTop)
 
             name = QLabel(check.label, row)
             name.setObjectName("FieldLabel")
-            name.setMinimumWidth(150)
+            name.setMinimumWidth(METRICS.space_8 * 4)
             name.setWordWrap(True)
             row_layout.addWidget(name, 0, Qt.AlignmentFlag.AlignTop)
 
@@ -674,7 +683,9 @@ class SetupWizard(QDialog):
         items: dict[Path, QTreeWidgetItem] = {}
         for path, purpose in self._viewmodel.directory_plan():
             label = str(path) if path == summary.data_root else path.name
-            item = QTreeWidgetItem([f"{label}    —    {purpose}"])
+            text = f"{label}    —    {purpose}"
+            item = QTreeWidgetItem([text])
+            item.setToolTip(0, f"{path}\n{purpose}")
             parent_item = items.get(path.parent)
             if parent_item is None:
                 self._review_tree.addTopLevelItem(item)
@@ -683,9 +694,9 @@ class SetupWizard(QDialog):
             items[path] = item
 
         database_parent = summary.database_path.parent
-        database_item = QTreeWidgetItem(
-            [f"{summary.database_path.name}    —    SQLite business database"]
-        )
+        database_text = f"{summary.database_path.name}    —    SQLite business database"
+        database_item = QTreeWidgetItem([database_text])
+        database_item.setToolTip(0, str(summary.database_path))
         if database_parent in items:
             items[database_parent].addChild(database_item)
         else:
@@ -814,6 +825,13 @@ class SetupWizard(QDialog):
         self._failure_detail.show()
         self._retry_persist_button.setVisible(can_retry_persist)
         self._choose_location_button.setVisible(not can_retry_persist)
+        # The footer Next button is hidden on this page, so give keyboard users
+        # an explicit default recovery action.
+        recovery_button = (
+            self._retry_persist_button if can_retry_persist else self._choose_location_button
+        )
+        recovery_button.setDefault(True)
+        recovery_button.setFocus()
         self._set_page(PAGE_PROGRESS)
 
     def _retry_persist(self) -> None:
@@ -838,6 +856,7 @@ class SetupWizard(QDialog):
         self._failure_detail.hide()
         self._retry_persist_button.hide()
         self._choose_location_button.hide()
+        self._next_button.setDefault(True)
         self._set_page(PAGE_LOCATION)
 
     def _show_completion(self, result: SetupResult) -> None:

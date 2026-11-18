@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import pytest
+from PySide6.QtCore import QSettings
 from PySide6.QtWidgets import QLabel
 
 from app.core import constants
@@ -15,12 +16,17 @@ from app.ui.viewmodels.shell_viewmodel import ShellViewModel
 
 
 @pytest.fixture
-def window(qapp, config_service: ConfigService) -> MainWindow:
+def window_settings(tmp_path) -> QSettings:
+    return QSettings(str(tmp_path / "window.ini"), QSettings.Format.IniFormat)
+
+
+@pytest.fixture
+def window(qapp, config_service: ConfigService, window_settings: QSettings) -> MainWindow:
     config = AppConfig(theme="light")
     config_service.save(config)
     viewmodel = ShellViewModel(config_service, config)
     theme_manager = ThemeManager(qapp)
-    main_window = MainWindow(viewmodel, theme_manager)
+    main_window = MainWindow(viewmodel, theme_manager, settings=window_settings)
     yield main_window
     main_window.close()
     main_window.deleteLater()
@@ -145,7 +151,7 @@ def test_theme_manager_toggle_switches_between_explicit_themes(qapp) -> None:
 
 
 def test_configured_database_is_reported_in_status_and_home(
-    qapp, config_service: ConfigService, tmp_path
+    qapp, config_service: ConfigService, tmp_path, window_settings: QSettings
 ) -> None:
     root = tmp_path / "Business"
     database_path = root / "Database" / "BusinessManagement.db"
@@ -161,6 +167,7 @@ def test_configured_database_is_reported_in_status_and_home(
         ThemeManager(qapp),
         database_path=database_path,
         data_root=root,
+        settings=window_settings,
     )
 
     try:

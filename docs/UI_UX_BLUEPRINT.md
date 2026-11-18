@@ -3,10 +3,10 @@
 | Field | Value |
 | --- | --- |
 | Document | UI_UX_BLUEPRINT.md |
-| Version | 1.0 |
-| Date | 2026-11-12 |
-| Status | Draft for review |
-| Toolkit | PySide6 6.x, Qt Widgets, QSS |
+| Version | 1.1 |
+| Date | 2026-11-17 |
+| Status | Phase 5 implemented; owner review pending |
+| Toolkit | PySide6 6.12.0, Qt Widgets, QSS |
 | Related | BLUEPRINT.md, ARCHITECTURE.md |
 
 ## 1. Design intent
@@ -62,9 +62,9 @@ Principles:
 - Sidebar groups: **Overview**, **Operations** (Sales, Purchases, Inventory), **Parties** (Customers, Suppliers), **Finance** (Expenses, Accounting, Reports), **System** (Settings, Backup, Users if enabled).
 - One level of nesting only. No mega-menus, no tabs inside tabs.
 - The active item uses a soft green surface and a 3 px left accent; hover uses a neutral tint.
-- Collapsible to an icon rail (48 px) when the window is narrower than 1360 px, with tooltips.
-- Badges show counts only where actionable (e.g., low-stock count); no vanity counters.
-- Navigation state is restored on next launch (last module, window geometry, splitter positions).
+- Collapsible to an icon rail (48 px) when the window is narrower than 1360 px, with tooltips. **Target only; not implemented in Phase 5** because no approved icon set exists. The sidebar remains full-width.
+- Badges show counts only where actionable (e.g., low-stock count); no vanity counters. No navigation badges exist in this build.
+- Navigation state is restored on next launch (last module, window geometry, splitter positions). Phase 5 restores the last module and window geometry/state through `QSettings`; splitter positions are not yet present in the shell.
 
 ### 2.3 Status bar
 
@@ -133,6 +133,15 @@ Metric definitions must be approved with reports (Phase 10). Tentative:
 - Payable: sum of unpaid supplier bills.
 - Low stock: goods with on-hand ≤ reorder level.
 - Trend comparisons: same period previous day/month/year, clearly labelled.
+
+### 4.3 Phase 5 implementation status
+
+The dashboard still reports only verified foundation facts: application version,
+currency, data location, database file, and startup verification state. Business
+KPI cards and charts are intentionally absent because no approved report or metric
+definitions exist. `EmptyState` explicitly explains that sales, purchases,
+inventory, and accounting records are not part of this build. No placeholder or
+fake figures are rendered or stored.
 
 ## 5. List and table pattern
 
@@ -232,6 +241,13 @@ Page header: "Sales invoices"                 [+ New invoice]
 | Database locked | Short wait, then actionable message; never loop silently |
 
 Toasts: bottom-right, 4 s, max two stacked, dismissible, announced to screen readers. No toast for errors that require a decision.
+
+Phase 5 implements `Toast`/`show_toast()` with a four-second timer, bottom-right
+placement, click-to-dismiss, at most two visible stacked messages, and an
+accessible name containing the semantic tone. Screen-reader live-region
+announcement is not yet implemented; the accessible name is present. Routine
+successes use a status badge plus toast. Non-blocking read failures use a warning
+badge. Errors that require a decision remain modal `QMessageBox` dialogs.
 
 ## 9. Design tokens
 
@@ -346,6 +362,17 @@ This is a desktop app, but window sizes vary and DPI scaling can be high.
 - High DPI: enable Qt high-DPI scaling, use SVG icons where possible, test 150%/200%.
 - Multi-monitor: restore geometry only if the screen still exists; otherwise center on the primary screen.
 
+### 11.1 Phase 5 display behaviour
+
+`app/main.py` keeps Qt's supported high-DPI policy
+`Qt.HighDpiScaleFactorRoundingPolicy.PassThrough`. No global font or widget
+scaling multiplier is applied. The main window and backup view use `QScrollArea`
+plus token-driven margins so content remains reachable when the window is small
+or text wraps. Programmatic offscreen smoke runs were executed at `QT_SCALE_FACTOR`
+1, 1.25, and 1.5; they verify startup and construction only. Real Windows visual
+walkthroughs at 100%, 125%, and 150% were not performed and remain a prerequisite
+for release sign-off. The 48 px icon rail and SVG icon family remain deferred.
+
 ## 12. Accessibility and usability
 
 - Contrast: body text and essential icons meet WCAG AA (4.5:1 normal text, 3:1 large text/UI components).
@@ -390,6 +417,13 @@ Components live in `app/ui/components/`; each has one responsibility, tokens for
 | `Sidebar` | Navigation, groups, collapse state |
 | `TotalsPanel` | Subtotal, discount, tax, total with tabular figures |
 
+The table above is the long-term component target. Phase 5 deliberately added
+only the components needed by the current screens: `StatusBadge`, `EmptyState`,
+`Toast`/`show_toast()`, `DetailCard`, `make_button()`, and `set_dialog_size()`,
+alongside the existing `Sidebar`, `TopBar`, `SectionCard`, and `PlaceholderView`.
+`DataTable`, form primitives, `KpiCard`, `ChartCard`, and a component gallery are
+still deferred to the phases that own those screens.
+
 Rules:
 
 - No module-specific styling inside a shared component; variants are explicit.
@@ -429,3 +463,82 @@ Before a screen is considered done:
 - [ ] Screen-reader names exist for icon-only controls.
 - [ ] Window geometry restores safely on a missing monitor.
 - [ ] No English text is truncated at minimum window width without a tooltip.
+
+The checklist remains the target review checklist. Phase 5 status is recorded in
+§17; items depending on real Windows DPI inspection or future business screens are
+not marked complete.
+
+## 17. Phase 5 final implementation record
+
+### 17.1 Final design system
+
+- `app/ui/themes/tokens.py` is the single source of truth for the light/dark
+  palettes, chart palettes, typography scale and weights, spacing scale, radii,
+  control/row heights, shell dimensions, icon sizes, and dialog/wizard sizes.
+- `app/ui/themes/qss.py` renders one token-driven QSS template with
+  `string.Template`. Every positive length is emitted with a `px` unit; generated
+  stylesheets are asserted to contain no unresolved `$` placeholders and no
+  unitless positive lengths.
+- The Windows-compatible stack is `Segoe UI Variable Text` → `Segoe UI` →
+  `Tahoma` → `sans-serif`, with `Cascadia Mono` → `Consolas` → `monospace` for
+  path and numeric display.
+- `ThemeManager` applies the QSS and synchronises `QPalette` so native dialog
+  controls follow the active theme. The preference remains in `AppConfig`; no
+  configuration schema field was added.
+- QSS covers buttons (primary/secondary/danger/disabled/focus), navigation,
+  cards, status badges with four non-color border shapes, toasts, inputs,
+  tables/trees, headers, scroll bars, progress bars, check boxes, tooltips, and
+  message boxes.
+
+### 17.2 Light and Dark themes
+
+Light Mode uses the calm green accent `#1F7A4D` on neutral `#F6F7F5`/`#FFFFFF`
+surfaces with soft `#DDE3DD` borders. Dark Mode uses `#4CAF82` on layered
+`#121614`/`#1A201D` surfaces with `#313B35` borders; it avoids pure black and
+keeps success, warning, error, and information colors distinguishable. The full
+token tables are in §9.
+
+### 17.3 Implemented components and interaction patterns
+
+| Component | Location | Purpose |
+| --- | --- | --- |
+| `StatusBadge` / `apply_status` | `app/ui/components/feedback.py` | Semantic text + shape + accessible name |
+| `EmptyState` | `app/ui/components/feedback.py` | Text-only empty state with title/detail |
+| `Toast` / `show_toast` | `app/ui/components/feedback.py` | Non-modal, four-second, max-two feedback |
+| `DetailCard` | `app/ui/components/controls.py` | Consistent caption/value rows |
+| `make_button` | `app/ui/components/controls.py` | Primary/secondary/danger variants + accessible name |
+| `set_dialog_size` | `app/ui/components/controls.py` | Token sizing clamped to 90% of the screen |
+
+The shell uses `QSettings` keys `window/geometry`, `window/state`, and
+`navigation/current`. Geometry is restored only when it fits a connected screen;
+otherwise the window is centred. `F5` (`QKeySequence.StandardKey.Refresh`) calls
+`refresh()` on the active view when present.
+
+### 17.4 Dialogs and accessibility
+
+Setup, recovery, backup settings, restore confirmation, and the fatal error
+dialog now use consistent token sizes, explicit default/cancel actions,
+accessible names, and a deliberate tab order. Recovery focuses **Retry**; restore
+focuses **Cancel**; schedule settings uses **Save schedule** with `Ctrl+S`. Task
+Scheduler status is queried asynchronously so the backup settings dialog opens
+immediately. `QTreeWidgetItem.setAccessibleName()` is unavailable in the pinned
+PySide6 version; trees use tree-level accessible names/descriptions and per-item
+tooltips instead.
+
+Important controls have accessible names, focus policies are explicit, and no
+meaning is conveyed by color alone. Full keyboard-only walkthroughs and Windows
+screen-reader verification remain manual release tasks.
+
+### 17.5 Remaining UI limitations
+
+- No icon-rail collapse and no approved SVG icon family; existing textual
+  navigation is retained.
+- No dashboard KPI cards or charts; business metric definitions are not approved.
+- No `DataTable`, form primitives, validation framework, component gallery,
+  skeleton loading, or typed confirmation dialog.
+- No live DPI-change handling; Qt is configured with `PassThrough` scaling and
+  layout-based resizing.
+- Toast accessible names are present, but no live-region announcement is emitted.
+- Real Windows visual/DPI walkthroughs at 100%, 125%, and 150% were not performed
+  in this environment; only offscreen programmatic smoke checks at scale factors
+  1, 1.25, and 1.5 were executed.

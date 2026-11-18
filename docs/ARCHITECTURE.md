@@ -3,9 +3,9 @@
 | Field | Value |
 | --- | --- |
 | Document | ARCHITECTURE.md |
-| Version | 1.3 |
-| Date | 2026-11-14 |
-| Status | Draft for review — Phase 3 setup workflow implemented |
+| Version | 1.4 |
+| Date | 2026-11-17 |
+| Status | Phases 1–5 implemented; Phase 5 owner review pending |
 | Audience | Developers, reviewer, future maintainers |
 | Related | BLUEPRINT.md, DATABASE_SCHEMA.md, BACKUP_STRATEGY.md, DEVELOPMENT_ROADMAP.md |
 
@@ -166,7 +166,7 @@ Status values: **Accepted** = required by the brief; **Proposed** = needs owner 
 - **Consequences:** Errors are translated into a UI-friendly `ValidationError` structure.
 
 ### ADR-017 — Theming via QSS and design tokens
-- **Status:** Proposed.
+- **Status:** Implemented in Phase 1; extended with the final tokenized design system in Phase 5 (§19).
 - **Decision:** A token module defines colors/spacing/typography; a small generator produces QSS for light and dark themes. Theme switching is runtime, no restart.
 - **Rationale:** Qt Widgets has no native design-token system; centralized QSS avoids per-widget styling drift.
 - **Consequences:** Custom-painted widgets must read tokens, not hard-coded colors.
@@ -1051,3 +1051,116 @@ touches Qt.
   strengthened in a later hardening phase.
 - The recovery dialog intentionally has no restore action until Phase 4 can
   verify and stage a restore safely.
+
+## 19. Phase 5 implementation record (2026-11-17)
+
+This section records the UI/UX refinement actually built in Phase 5. It does not
+change the Phase 1–4 data-protection contract: no backup, restore, relocation,
+scheduler, migration, or database-schema logic was modified. No business module,
+seed data, authentication, or new database table was added.
+
+### 19.1 Scope and layering
+
+Phase 5 is confined to the presentation layer plus two new constants for feedback
+durations. The dependency rules in §4.1 remain in force. ViewModels still import
+only QtCore; the new backup signals (`read_failed`, `task_status`) carry display
+strings and do not expose services or widgets to the view.
+
+New presentation modules:
+
+```text
+app/ui/components/controls.py   # make_button, set_dialog_size, DetailCard
+app/ui/components/feedback.py   # StatusBadge, apply_status, EmptyState, Toast, show_toast
+tests/test_phase05_ui.py        # Phase 5 programmatic UI tests
+```
+
+`QSettings` is used only for window geometry, window state, and the current
+navigation key. It is separate from `AppConfig`/`config.json`, so the
+configuration schema and its atomic-write behaviour are unchanged.
+
+### 19.2 Theme and QSS architecture
+
+`app/ui/themes/tokens.py` defines frozen `Palette`, `Metrics`, and `ChartPalette`
+dataclasses plus the light/dark palettes. `app/ui/themes/qss.py` builds one QSS
+template from those tokens with `string.Template`; every positive length is
+emitted with a `px` suffix. Tests assert that generated sheets contain no `$`
+placeholders, no `pxpx`, and no unitless positive lengths for common length
+properties. `ThemeManager` continues to apply the sheet at runtime and now also
+synchronises the Qt palette so native dialogs follow the active theme.
+
+### 19.3 Shell changes
+
+`MainWindow` now:
+
+- accepts an injectable `QSettings` instance for isolated tests;
+- restores `window/geometry`, `window/state`, and `navigation/current`, with a
+  connected-screen check before restoring saved geometry;
+- saves the session on an accepted close, after the existing backup shutdown
+  guard allows the close;
+- exposes `F5` via `QShortcut(QKeySequence.StandardKey.Refresh, self)` and calls
+  `refresh()` on the active view when that hook exists;
+- adds an accessible status bar and accessible database, backup, currency,
+  local-only, and version labels;
+- shows the latest verified backup time from `BackupSnapshot` with a tooltip
+  naming the backup file;
+- uses token-driven default/minimum window sizes and named feedback timeouts.
+
+The sidebar spacing now uses `METRICS.space_1`. The icon-rail collapse target in
+UI_UX_BLUEPRINT.md §2.2 remains unimplemented because no approved icon set exists.
+
+### 19.4 Dashboard and backup view changes
+
+`HomeView` and `BackupView` now use `QScrollArea` with a resizable content widget
+and token margins, so long paths and wrapped text remain reachable without
+horizontal page scrolling. `HomeView` reports only verified environment facts and
+uses `StatusBadge`, `DetailCard`, and `EmptyState`; it renders no fake KPI or chart
+data.
+
+`BackupView` now uses `StatusBadge`, `DetailCard`, `make_button`, and `show_toast`.
+It has an explicit empty state, an unavailable state, a busy state that disables
+the manual-backup and refresh controls, an accessible progress bar, an accessible
+history tree with tooltips, and destructive-action isolation in the tab order.
+Only a selected `VERIFIED` record enables **Restore selected backup**. A failed
+history read emits the new `BackupViewModel.read_failed` signal and is shown as a
+warning badge instead of a modal dialog; actual operation failures still show a
+modal error. Task Scheduler status is fetched through the new asynchronous
+`load_task_status()`/`task_status` path so the settings dialog does not block on
+a scheduler query.
+
+### 19.5 Dialog changes
+
+- **Setup wizard:** token-size clamping, labeled path field with buddy, explicit
+  tree accessible name, full paths in tooltips, consistent buttons/tab order, and
+  a focused recovery action when initialization or persistence fails.
+- **Recovery:** token sizing, `DetailCard` for preserved paths, Retry focused as
+  the default action, Exit separated in tab order with an explicit accessible
+  name, and unchanged four-action semantics.
+- **Restore confirmation:** token sizing, `DetailCard` for the selected backup,
+  Cancel as default with a named destructive action, and unchanged explicit
+  confirmation requirement.
+- **Backup settings:** token sizing, named fields, `Ctrl+S` on Save schedule,
+  `set_task_status()` for asynchronous scheduler status, and unchanged settings
+  validation/persistence path.
+- **Fatal error:** a selectable correlation reference and a **Copy reference**
+  button; technical detail remains behind **Show details**.
+
+`QTreeWidgetItem` has no `setAccessibleName()` in the pinned PySide6 build, so
+tree-level accessible names/descriptions and item tooltips are used instead.
+
+### 19.6 Verification performed
+
+- `./.venv/Scripts/python.exe -m ruff check app tests` — all checks passed.
+- `./.venv/Scripts/python.exe -m pytest -q tests/test_phase05_ui.py` — 20 passed.
+- `./.venv/Scripts/python.exe -m pytest -q` — 448 passed.
+- Programmatic offscreen smoke runs with `QT_SCALE_FACTOR=1`, `1.25`, and `1.5`
+  exited `0` and logged `Main window shown` with no critical errors or tracebacks.
+  These are construction/smoke checks, not visual DPI verification.
+- Real Windows visual/DPI walkthroughs and real Windows backup integration drills
+  were not executed in this environment and are documented as outstanding in the
+  Phase 5 report.
+
+### 19.7 Phase 6 boundary
+
+Phase 5 stops at presentation polish. Authentication, roles, users, business
+master data, and all Phase 6+ features remain unstarted pending owner review and
+explicit authorization.

@@ -4,10 +4,11 @@ A standalone, offline Windows desktop application for small-business management.
 Built with Python 3.14, PySide6 (Qt Widgets), and a layered MVVM / application
 service architecture.
 
-**Current status: Phase 4 complete.** The project contains the technical
-foundation, the database layer, the first-launch setup wizard, and the backup,
-restore, scheduled-runner, and relocation infrastructure. There are no business
-tables, business modules, or sample data yet.
+**Current status: Phase 5 complete; owner review pending.** The project contains
+the technical foundation, the database layer, the first-launch setup wizard, the
+backup/restore/scheduled-runner/relocation infrastructure, and the refined
+native desktop UI. There are no business tables, business modules, or sample data
+yet.
 
 ## Implemented scope
 
@@ -84,6 +85,21 @@ Phase 4:
 - Pre-upgrade safety-backup gate in `UpgradeService` and the maintenance CLI;
   normal startup still never migrates automatically.
 
+Phase 5:
+
+- Token-driven light and dark themes with Qt palette synchronisation; every QSS
+  length is emitted with an explicit `px` unit.
+- Refined shell with accessible status labels, latest verified backup status,
+  `F5` refresh, and restored window geometry/state/navigation via `QSettings`.
+- Scrollable dashboard and backup views with token spacing and honest empty
+  states; no fake business figures, charts, or seed data.
+- Reusable `StatusBadge`, `EmptyState`, `Toast`, `DetailCard`, `make_button()`,
+  and `set_dialog_size()` components.
+- Consistent setup, recovery, restore-confirmation, backup-settings, and fatal
+  error dialogs with explicit defaults, tab order, and accessible names.
+- Backup UI states for empty, unavailable, busy, verified-only restore, success
+  toast, non-modal read warning, and modal decision errors.
+
 Explicitly not implemented (later phases): authentication, business profile,
 customers, suppliers, products, sales, purchases, inventory, accounting,
 expenses, and reports. No seeders or sample business data exist.
@@ -142,6 +158,25 @@ identity, and Alembic revision before the main window opens. A missing drive or
 invalid configuration shows a blocking recovery dialog instead of creating a
 fallback database.
 
+### Desktop UI behaviour
+
+- The theme can be switched from the top bar; the choice remains in
+  `%APPDATA%\GobindasBMS\config.json`.
+- The main window restores its previous size, state, and selected page on the
+  next launch. Saved geometry is ignored if it does not fit a connected screen.
+- `F5` refreshes the active page when that page exposes a `refresh()` hook.
+- Status badges communicate pass, warning, error, and information with text,
+  border shape, and accessible names, not color alone.
+- Routine successes show a brief toast; a failed backup-history read shows a
+  warning in the status area; errors requiring a decision remain modal.
+- The backup view enables **Restore selected backup** only for a selected
+  verified entry. Manual backup and refresh are disabled while an operation is
+  running.
+- Qt uses `PassThrough` high-DPI scaling with layout-based resizing; no global
+  font or widget scaling multiplier is applied. Offscreen programmatic smoke
+  checks ran at scale factors 1, 1.25, and 1.5. Real Windows visual/DPI
+  walkthroughs remain outstanding.
+
 ## Testing and linting
 
 ```powershell
@@ -155,7 +190,7 @@ Or run both with the helper script:
 .\scripts\check.ps1
 ```
 
-UI tests use Qt's `offscreen` platform platform plugin, so they run without
+UI tests use Qt's `offscreen` platform plugin, so they run without
 opening windows. The startup tests launch the real entry point in a subprocess
 with isolated `APPDATA` and `LOCALAPPDATA` folders.
 
@@ -300,10 +335,12 @@ app/
 │   ├── backup.py               # Headless scheduled/manual backup runner
 │   └── migrate.py              # Headless migration/health CLI
 └── ui/
-    ├── main_window.py          # Shell layout and navigation
-    ├── components/             # Sidebar, top bar, cards, placeholder view
+    ├── main_window.py          # Shell, navigation, session persistence, F5
+    ├── components/             # Sidebar, top bar, cards, controls, feedback
+    │   ├── controls.py         # make_button, set_dialog_size, DetailCard
+    │   └── feedback.py         # StatusBadge, EmptyState, Toast, show_toast
     ├── dialogs/                # Setup, recovery, backup settings, restore dialogs
-    ├── themes/                 # Tokens, QSS generator, runtime theme manager
+    ├── themes/                 # Tokens, token-driven QSS, runtime theme manager
     ├── viewmodels/             # QtCore-only view models
     └── views/                  # Dashboard and backup views
 migrations/                     # Alembic environment and version scripts
@@ -352,19 +389,22 @@ These boundaries are checked by `tests/test_architecture.py`.
 ## Documentation
 
 - `docs/BLUEPRINT.md` - product scope and open questions
-- `docs/ARCHITECTURE.md` - technical architecture and Phase 1–4 implementation records
+- `docs/ARCHITECTURE.md` - technical architecture and Phase 1–5 implementation records
 - `docs/DEVELOPMENT_ROADMAP.md` - phase plan and completion status
-- `docs/UI_UX_BLUEPRINT.md` - UI direction and design tokens
+- `docs/UI_UX_BLUEPRINT.md` - UI direction, final design system, and limitations
 - `docs/BACKUP_STRATEGY.md`, `docs/SECURITY_AND_DATA_PROTECTION.md`,
   `docs/DATABASE_SCHEMA.md` - backup, security, and schema references
 - `Reports/PHASE_01_REPORT.md` - Phase 1 completion report
 - `Reports/PHASE_02_REPORT.md` - Phase 2 completion report
 - `Reports/PHASE_03_REPORT.md` - Phase 3 completion report
 - `Reports/PHASE_04_REPORT.md` - Phase 4 completion report
+- `Reports/PHASE_05_REPORT.md` - Phase 5 completion report
 
 ## Next phase
 
-Review `Reports/PHASE_04_REPORT.md` and explicitly authorize **Phase 5 — Main
-interface, theme, and reusable components**. Do not start Phase 5 without owner
-review/approval. Phase 4 established verified backup, restore, scheduling, and
-relocation foundations that must remain intact.
+Review `Reports/PHASE_05_REPORT.md` and explicitly authorize the next phase. Do
+not start Phase 6 authentication, master data, or any business phase without owner
+review/approval. Phase 5 preserved the verified backup, restore, scheduling,
+relocation, and migration-safety foundations established in earlier phases.
+Real Windows visual/DPI walkthroughs and the Phase 4 manual integration drill
+remain outstanding release-verification tasks.

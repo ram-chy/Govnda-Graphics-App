@@ -7,13 +7,13 @@ and atomic configuration writes happen in :class:`ScheduleService`.
 from __future__ import annotations
 
 from PySide6.QtCore import QTime
+from PySide6.QtGui import QKeySequence
 from PySide6.QtWidgets import (
     QCheckBox,
     QDialog,
     QFormLayout,
     QHBoxLayout,
     QLabel,
-    QPushButton,
     QSpinBox,
     QTimeEdit,
     QVBoxLayout,
@@ -22,6 +22,7 @@ from PySide6.QtWidgets import (
 
 from app.core import constants
 from app.services.schedule_service import BackupSettings
+from app.ui.components.controls import make_button, set_dialog_size
 from app.ui.themes.tokens import METRICS
 
 
@@ -39,9 +40,19 @@ class BackupSettingsDialog(QDialog):
         self.setObjectName("BackupSettingsDialog")
         self.setWindowTitle("Backup schedule and retention")
         self.setModal(True)
-        self.resize(620, 460)
-        self.setMinimumSize(560, 420)
+        set_dialog_size(
+            self,
+            METRICS.dialog_width - 100,
+            METRICS.dialog_height,
+            minimum_width=METRICS.dialog_minimum_width - 60,
+            minimum_height=METRICS.dialog_minimum_height,
+        )
         self._build_ui(settings, task_status)
+
+    def set_task_status(self, text: str) -> None:
+        """Update the asynchronous Task Scheduler status after the dialog opens."""
+        self._task_status_label.setText(text)
+        self._task_status_label.setAccessibleName(f"Windows task status: {text}")
 
     @property
     def enabled(self) -> bool:
@@ -84,6 +95,7 @@ class BackupSettingsDialog(QDialog):
 
         self._enabled = QCheckBox("Create a daily automatic backup", self)
         self._enabled.setChecked(settings.enabled)
+        self._enabled.setAccessibleName("Create a daily automatic backup")
         layout.addWidget(self._enabled)
 
         form = QFormLayout()
@@ -94,6 +106,7 @@ class BackupSettingsDialog(QDialog):
         self._time.setDisplayFormat("HH:mm")
         hour, minute = _parse_time(settings.time)
         self._time.setTime(QTime(hour, minute))
+        self._time.setAccessibleName("Backup time in local Windows time")
         form.addRow("Backup time (local Windows time)", self._time)
 
         self._retention = QSpinBox(self)
@@ -103,6 +116,7 @@ class BackupSettingsDialog(QDialog):
         )
         self._retention.setValue(settings.retention_days)
         self._retention.setSuffix(" days")
+        self._retention.setAccessibleName("Keep automatic backups for this many days")
         form.addRow("Keep automatic backups for", self._retention)
 
         self._keep = QSpinBox(self)
@@ -112,13 +126,15 @@ class BackupSettingsDialog(QDialog):
         )
         self._keep.setValue(settings.keep_minimum)
         self._keep.setSuffix(" backups")
+        self._keep.setAccessibleName("Always keep at least this many backups")
         form.addRow("Always keep at least", self._keep)
         layout.addLayout(form)
 
-        status = QLabel(task_status, self)
-        status.setObjectName("MetaLabel")
-        status.setWordWrap(True)
-        layout.addWidget(status)
+        self._task_status_label = QLabel(task_status, self)
+        self._task_status_label.setObjectName("MetaLabel")
+        self._task_status_label.setWordWrap(True)
+        self._task_status_label.setAccessibleName(f"Windows task status: {task_status}")
+        layout.addWidget(self._task_status_label)
 
         limitation = QLabel(
             "The scheduled task runs under this Windows user account and only while that "
@@ -134,14 +150,14 @@ class BackupSettingsDialog(QDialog):
         buttons = QHBoxLayout()
         buttons.setSpacing(METRICS.space_2)
         buttons.addStretch(1)
-        cancel = QPushButton("Cancel", self)
-        cancel.setProperty("secondary", True)
+        cancel = make_button("Cancel", self, variant="secondary")
         cancel.clicked.connect(self.reject)
         buttons.addWidget(cancel)
-        save = QPushButton("Save schedule", self)
-        save.setDefault(True)
+        save = make_button("Save schedule", self, default=True)
+        save.setShortcut(QKeySequence.StandardKey.Save)
         save.clicked.connect(self.accept)
         buttons.addWidget(save)
+        self.setTabOrder(cancel, save)
         layout.addLayout(buttons)
 
 

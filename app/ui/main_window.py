@@ -5,7 +5,8 @@ from __future__ import annotations
 import logging
 from pathlib import Path
 
-from PySide6.QtGui import QCloseEvent
+from PySide6.QtCore import QByteArray, QSettings, Qt
+from PySide6.QtGui import QCloseEvent, QKeySequence, QShortcut
 from PySide6.QtWidgets import (
     QApplication,
     QHBoxLayout,
@@ -24,8 +25,10 @@ from app.services.database_runtime import DatabaseRuntime
 from app.ui.components.placeholder_view import PlaceholderView
 from app.ui.components.sidebar import NavGroup, NavItem, Sidebar
 from app.ui.components.top_bar import TopBar
+from app.ui.formatting import format_backup_time
 from app.ui.themes.manager import ThemeManager
-from app.ui.viewmodels.backup_viewmodel import BackupViewModel
+from app.ui.themes.tokens import METRICS
+from app.ui.viewmodels.backup_viewmodel import BackupSnapshot, BackupViewModel
 from app.ui.viewmodels.shell_viewmodel import ShellViewModel
 from app.ui.views.backup_view import BackupView
 from app.ui.views.home_view import HomeView
@@ -90,16 +93,22 @@ class MainWindow(QMainWindow):
         config_service: ConfigService | None = None,
         database_runtime: DatabaseRuntime | None = None,
         workspace_factory: BackupWorkspaceFactory | None = None,
+        settings: QSettings | None = None,
         parent: QWidget | None = None,
     ) -> None:
         super().__init__(parent)
         self._viewmodel = viewmodel
         self._theme_manager = theme_manager
+        self._settings = settings or QSettings(
+            constants.ORGANIZATION_NAME, constants.APP_SHORT_NAME
+        )
+        self._session_restored = False
         self._database_path = database_path
         self._data_root = data_root
         self._views: dict[str, QWidget] = {}
         self._current_key = ""
         self._backup_viewmodel: BackupViewModel | None = None
+        self._backup_status: QLabel | None = None
         if (
             config_service is not None
             and database_runtime is not None
@@ -113,18 +122,25 @@ class MainWindow(QMainWindow):
             )
 
         self.setWindowTitle(constants.APP_NAME)
-        self.resize(1440, 900)
-        self.setMinimumSize(1280, 720)
+        self.resize(METRICS.window_default_width, METRICS.window_default_height)
+        self.setMinimumSize(METRICS.window_minimum_width, METRICS.window_minimum_height)
 
         self._build_ui(app_version)
         if self._backup_viewmodel is not None:
             self._backup_viewmodel.status_message.connect(self._show_status_message)
             self._backup_viewmodel.database_changed.connect(self._on_database_changed)
+            self._backup_viewmodel.snapshot_changed.connect(self._on_backup_snapshot)
 
         self._theme_manager.changed.connect(self._on_theme_changed)
         self._theme_manager.apply(self._viewmodel.theme_preference)
-        self.navigate("dashboard")
-        self._center_on_primary_screen()
+        self._setup_shortcuts()
+        geometry_restored = self._restore_geometry()
+        self._session_restored = True
+
+        saved_key = self._settings.value("navigation/current", "dashboard", type=str)
+        self.navigate(saved_key if saved_key in _NAV_ITEMS else "dashboard")
+        if not geometry_restored:
+            self._center_on_primary_screen()
 
     @property
     def viewmodel(self) -> ShellViewModel:
@@ -167,6 +183,8 @@ class MainWindow(QMainWindow):
         self._top_bar.set_page(item.label, item.subtitle)
         self._sidebar.set_active(key)
         self._current_key = key
+        if self._session_restored:
+            self._settings.setValue("navigation/current", key)
         logger.info("Navigated to %s", key)
 
     def closeEvent(self, event: QCloseEvent) -> None:
@@ -181,6 +199,7 @@ class MainWindow(QMainWindow):
             )
             event.ignore()
             return
+        self._save_session()
         logger.info("Main window closing")
         if self._backup_viewmodel is not None:
             self._backup_viewmodel.shutdown()
@@ -192,6 +211,60 @@ class MainWindow(QMainWindow):
             logger.info("Startup catch-up skipped: backup workspace is unavailable")
             return False
         return self._backup_viewmodel.run_startup_catch_up()
+
+    def _setup_shortcuts(self) -> None:
+        """Provide keyboard refresh for the active page."""
+        self._refresh_shortcut = QShortcut(QKeySequence.StandardKey.Refresh, self)
+        self._refresh_shortcut.setContext(Qt.ShortcutContext.WindowShortcut)
+        self._refresh_shortcut.setWhatsThis("Refresh the current page")
+        self._refresh_shortcut.activated.connect(self._refresh_current_view)
+
+    def _refresh_current_view(self) -> None:
+        widget = self._stack.currentWidget()
+        refresh = getattr(widget, "refresh", None)
+        if callable(refresh):
+            refresh()
+
+    def _restore_geometry(self) -> bool:
+        """Restore geometry and state only when they fit a connected screen."""
+        raw_geometry = self._settings.value("window/geometry")
+        if not isinstance(raw_geometry, (bytes, QByteArray)) or not raw_geometry:
+            return False
+        if not self.restoreGeometry(QByteArray(raw_geometry)):
+            return False
+        screen = QApplication.screenAt(self.geometry().center())
+        available = screen.availableGeometry() if screen is not None else None
+        if available is None:
+            return False
+        if self.width() > available.width() or self.height() > available.height():
+            return False
+
+        raw_state = self._settings.value("window/state")
+        if isinstance(raw_state, (bytes, QByteArray)) and raw_state:
+            self.restoreState(QByteArray(raw_state))
+        return True
+
+    def _save_session(self) -> None:
+        self._settings.setValue("window/geometry", self.saveGeometry())
+        self._settings.setValue("window/state", self.saveState())
+        self._settings.setValue("navigation/current", self._current_key)
+
+    def _on_backup_snapshot(self, snapshot: object) -> None:
+        if self._backup_status is None:
+            return
+        assert isinstance(snapshot, BackupSnapshot)
+        if not snapshot.available:
+            self._backup_status.setText("Backup: unavailable")
+            self._backup_status.setToolTip(snapshot.unavailable_reason)
+            return
+        latest = snapshot.latest_verified()
+        if latest is None:
+            self._backup_status.setText("Backup: none verified")
+            self._backup_status.setToolTip("No verified backup has been recorded yet.")
+            return
+        created = format_backup_time(latest.created_at_utc, fallback="Unknown")
+        self._backup_status.setText(f"Backup: {created}")
+        self._backup_status.setToolTip(f"Verified backup: {latest.file_name}")
 
     def _build_ui(self, app_version: str) -> None:
         central = QWidget(self)
@@ -226,6 +299,7 @@ class MainWindow(QMainWindow):
     def _build_status_bar(self, app_version: str) -> None:
         status = self.statusBar()
         status.setSizeGripEnabled(False)
+        status.setAccessibleName("Application status")
         status.showMessage("Ready")
 
         if self._database_path is None:
@@ -236,19 +310,31 @@ class MainWindow(QMainWindow):
         else:
             self._database_status = QLabel("Database: configured", status)
             self._database_status.setToolTip(str(self._database_path))
+        self._database_status.setAccessibleName("Database status")
         status.addPermanentWidget(self._database_status)
+
+        if self._backup_viewmodel is not None:
+            self._backup_status = QLabel("Backup: not checked", status)
+            self._backup_status.setAccessibleName("Last verified backup")
+            self._backup_status.setToolTip(
+                "Open Backup to review the verified backup history."
+            )
+            status.addPermanentWidget(self._backup_status)
 
         currency = self._viewmodel.currency
         currency_status = QLabel(f"{currency.code} {currency.symbol}", status)
         currency_status.setToolTip("Default currency used for display formatting.")
+        currency_status.setAccessibleName("Default currency")
         status.addPermanentWidget(currency_status)
 
         offline_status = QLabel("Local only", status)
         offline_status.setToolTip("This application works fully offline.")
+        offline_status.setAccessibleName("Local-only operation")
         status.addPermanentWidget(offline_status)
 
         version_status = QLabel(f"v{app_version}", status)
         version_status.setToolTip(constants.APP_NAME)
+        version_status.setAccessibleName(f"Version {app_version}")
         status.addPermanentWidget(version_status)
 
     def _create_view(self, key: str, item: NavItem) -> QWidget:
@@ -272,7 +358,9 @@ class MainWindow(QMainWindow):
         self._database_path = Path(database_path)
         self._database_status.setText("Database: configured")
         self._database_status.setToolTip(database_path)
-        self.statusBar().showMessage(f"Database location: {database_path}", 8000)
+        self.statusBar().showMessage(
+            f"Database location: {database_path}", constants.DATABASE_MESSAGE_TIMEOUT_MS
+        )
         self._replace_dashboard()
 
     def _replace_dashboard(self) -> None:
@@ -296,7 +384,7 @@ class MainWindow(QMainWindow):
         self._top_bar.set_theme(is_dark=is_dark)
 
     def _show_status_message(self, message: str) -> None:
-        self.statusBar().showMessage(message, 6000)
+        self.statusBar().showMessage(message, constants.STATUS_MESSAGE_TIMEOUT_MS)
 
     def _center_on_primary_screen(self) -> None:
         screen = QApplication.primaryScreen()

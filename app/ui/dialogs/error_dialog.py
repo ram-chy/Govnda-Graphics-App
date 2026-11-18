@@ -8,7 +8,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from PySide6.QtWidgets import QMessageBox, QWidget
+from PySide6.QtCore import Qt
+from PySide6.QtWidgets import QApplication, QMessageBox, QWidget
 
 
 def show_error_dialog(
@@ -30,6 +31,15 @@ def show_error_dialog(
     box.setDetailedText(f"Application log:\n{log_path}")
     box.setStandardButtons(QMessageBox.StandardButton.Ok)
     box.setDefaultButton(QMessageBox.StandardButton.Ok)
+    # The reference must be selectable and copyable without opening Details.
+    box.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
+    copy_button = box.addButton(
+        "Copy reference", QMessageBox.ButtonRole.ActionRole
+    )
+    copy_button.setAccessibleName("Copy the error reference to the clipboard")
+    copy_button.clicked.connect(
+        lambda: QApplication.clipboard().setText(correlation_id)
+    )
     box.exec()
 
 

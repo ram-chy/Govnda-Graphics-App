@@ -111,3 +111,9 @@ BACKUP_EXIT_LOCKED = 3
 # Catch-up runs once per application session after this delay so the window is
 # responsive and first-launch work has settled.
 CATCH_UP_DELAY_MS = 15_000
+
+# UI feedback durations (Phase 5). Status messages remain long enough to read,
+# while transient confirmations auto-dismiss after four seconds.
+STATUS_MESSAGE_TIMEOUT_MS = 6_000
+DATABASE_MESSAGE_TIMEOUT_MS = 8_000
+TOAST_DURATION_MS = 4_000

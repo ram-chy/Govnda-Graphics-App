@@ -9,19 +9,16 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
     QDialog,
-    QFrame,
-    QGridLayout,
     QHBoxLayout,
     QLabel,
-    QPushButton,
     QVBoxLayout,
     QWidget,
 )
 
 from app.domain.backup import BackupRecord
+from app.ui.components.controls import DetailCard, make_button, set_dialog_size
 from app.ui.formatting import format_backup_size, format_backup_time
 from app.ui.themes.tokens import METRICS
 
@@ -41,8 +38,13 @@ class RestoreConfirmationDialog(QDialog):
         self.setObjectName("RestoreConfirmationDialog")
         self.setWindowTitle("Restore a verified backup")
         self.setModal(True)
-        self.resize(720, 460)
-        self.setMinimumSize(620, 420)
+        set_dialog_size(
+            self,
+            METRICS.dialog_width,
+            METRICS.dialog_height,
+            minimum_width=METRICS.dialog_minimum_width,
+            minimum_height=METRICS.dialog_minimum_height,
+        )
         self._build_ui(current_database)
 
     @property
@@ -73,20 +75,7 @@ class RestoreConfirmationDialog(QDialog):
         warning.setWordWrap(True)
         layout.addWidget(warning)
 
-        card = QFrame(self)
-        card.setProperty("card", True)
-        card_layout = QVBoxLayout(card)
-        card_layout.setContentsMargins(
-            METRICS.space_5, METRICS.space_4, METRICS.space_5, METRICS.space_4
-        )
-        card_layout.setSpacing(METRICS.space_2)
-        card_title = QLabel("Selected backup", card)
-        card_title.setObjectName("SectionTitle")
-        card_layout.addWidget(card_title)
-
-        grid = QGridLayout()
-        grid.setHorizontalSpacing(METRICS.space_4)
-        grid.setVerticalSpacing(METRICS.space_2)
+        card = DetailCard("Selected backup", self)
         rows = (
             ("File", self._record.file_name),
             ("Created", format_backup_time(self._record.created_at_utc, fallback="Unknown")),
@@ -95,17 +84,8 @@ class RestoreConfirmationDialog(QDialog):
             ("Schema revision", self._record.schema_revision or "Unknown"),
             ("Current database", str(current_database) if current_database else "Not configured"),
         )
-        for row, (caption, value) in enumerate(rows):
-            caption_label = QLabel(caption, card)
-            caption_label.setObjectName("FieldLabel")
-            value_label = QLabel(value, card)
-            value_label.setObjectName("WizardPath")
-            value_label.setWordWrap(True)
-            value_label.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
-            grid.addWidget(caption_label, row, 0, Qt.AlignmentFlag.AlignTop)
-            grid.addWidget(value_label, row, 1)
-        grid.setColumnStretch(1, 1)
-        card_layout.addLayout(grid)
+        for caption, value in rows:
+            card.add_row(caption, value, self)
         layout.addWidget(card)
 
         note = QLabel(
@@ -121,16 +101,25 @@ class RestoreConfirmationDialog(QDialog):
         buttons = QHBoxLayout()
         buttons.setSpacing(METRICS.space_2)
         buttons.addStretch(1)
-        cancel = QPushButton("Cancel", self)
-        cancel.setProperty("secondary", True)
-        cancel.setDefault(True)
+        cancel = make_button(
+            "Cancel",
+            self,
+            variant="secondary",
+            accessible_name="Cancel restore",
+            default=True,
+        )
         cancel.clicked.connect(self.reject)
         buttons.addWidget(cancel)
 
-        restore = QPushButton("Restore this backup", self)
-        restore.setProperty("danger", True)
+        restore = make_button(
+            "Restore this backup",
+            self,
+            variant="danger",
+            accessible_name=f"Replace the current database with {self._record.file_name}",
+        )
         restore.clicked.connect(self.accept)
         buttons.addWidget(restore)
+        self.setTabOrder(cancel, restore)
         layout.addLayout(buttons)
 
 
