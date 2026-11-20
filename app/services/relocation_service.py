@@ -10,11 +10,13 @@ from __future__ import annotations
 
 import logging
 import os
+import shutil
 from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 
+from app.core import constants
 from app.core.config import AppConfig, ConfigService
 from app.core.exceptions import RelocationError
 from app.domain.backup import BackupType
@@ -61,6 +63,7 @@ class RelocationResult:
     safety_backup: BackupMetadata
     schema_revision: str
     duration_ms: int
+    managed_assets_relocated: int = 0
 
 
 class RelocationService:
@@ -169,6 +172,7 @@ class RelocationService:
         new_database_created = False
         temp_path: Path | None = None
         config_saved = False
+        relocated_asset_count = 0
         marker = MarkerStore(marker_paths(old_database)[RELOCATION_MARKER])
         try:
             marker.write(
@@ -200,6 +204,12 @@ class RelocationService:
                         "space, and Windows permissions. The current database was not changed."
                     ),
                 ) from exc
+
+            self._report(progress, 42, "Copying managed profile files")
+            relocated_asset_count = _copy_managed_assets(
+                old_root / constants.DATA_LOGOS_DIR,
+                layout.logos_dir,
+            )
 
             self._report(progress, 46, "Copying the database to the destination")
             temp_path = temp_path_for(new_database)
@@ -306,6 +316,7 @@ class RelocationService:
                 safety_backup=safety.metadata,
                 schema_revision=destination_check.schema_revision,
                 duration_ms=elapsed,
+                managed_assets_relocated=relocated_asset_count,
             )
         except Exception as exc:
             if new_database_engine is not None:
@@ -374,6 +385,44 @@ class RelocationService:
     def _report(progress: ProgressCallback | None, percent: int, message: str) -> None:
         if progress is not None:
             progress(percent, message)
+
+
+def _copy_managed_assets(source_dir: Path, destination_dir: Path) -> int:
+    if not source_dir.exists():
+        return 0
+    if not source_dir.is_dir():
+        raise RelocationError(
+            f"managed asset source is not a folder: {source_dir}",
+            user_message="The current profile logo folder is damaged. Nothing was moved.",
+        )
+    try:
+        files = sorted(
+            path
+            for path in source_dir.rglob("*")
+            if path.is_file() and not path.name.startswith(".")
+        )
+        destination_dir.mkdir(parents=True, exist_ok=True)
+        for path in files:
+            destination = destination_dir / path.relative_to(source_dir)
+            if destination.exists():
+                raise RelocationError(
+                    f"managed asset already exists at destination: {destination}",
+                    user_message=(
+                        "The destination already contains a managed profile file. Nothing was "
+                        "moved. Choose an empty data folder."
+                    ),
+                )
+            destination.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(path, destination)
+        return len(files)
+    except OSError as exc:
+        raise RelocationError(
+            f"managed assets could not be relocated: {exc}",
+            user_message=(
+                "The profile logo files could not be copied to the new data folder. The current "
+                "database and settings were not changed."
+            ),
+        ) from exc
 
 
 def _same_path(left: Path, right: Path) -> bool:

@@ -38,8 +38,11 @@ from app.infrastructure.backup.snapshot import (
     verify_database_file,
     verify_writable,
 )
+from app.infrastructure.database.migrations import application_head_revision
 from app.infrastructure.filesystem.layout import DataRootLayout
 from tests.backup_helpers import create_database_at, insert_probe, probe_values
+
+HEAD_REVISION = application_head_revision()
 
 CREATED = datetime(2026, 1, 2, 3, 4, 5, tzinfo=UTC)
 
@@ -453,8 +456,8 @@ def test_snapshot_includes_wal_content_from_an_active_connection(tmp_path: Path)
         assert probe_values(snapshot) == ["committed-to-wal"]
         verification = verify_database_file(snapshot)
         assert verification.ok is True
-        assert verification.schema_revision == "0001_baseline"
-        assert read_database_revision(snapshot) == "0001_baseline"
+        assert verification.schema_revision == HEAD_REVISION
+        assert read_database_revision(snapshot) == HEAD_REVISION
         assert verify_writable(snapshot) == (True, "ok")
     finally:
         connection.close()

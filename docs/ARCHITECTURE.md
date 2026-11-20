@@ -3,11 +3,17 @@
 | Field | Value |
 | --- | --- |
 | Document | ARCHITECTURE.md |
-| Version | 1.4 |
-| Date | 2026-11-17 |
-| Status | Phases 1–5 implemented; Phase 5 owner review pending |
+| Version | 1.6 |
+| Date | 2026-11-20 |
+| Status | Phases 1–6, 7 gate, Phase 7A, and Phase 7B Business Profile correction implemented |
 | Audience | Developers, reviewer, future maintainers |
 | Related | BLUEPRINT.md, DATABASE_SCHEMA.md, BACKUP_STRATEGY.md, DEVELOPMENT_ROADMAP.md |
+
+## Phase 7B implementation correction (authoritative)
+
+Phase 7B supersedes the Phase 7A text-only/no-history/no-logo/no-audit scope for Business Profile. The data root now includes `Logos/`, managed by `LogoStorageService`. The application adds `business_logo.py`, `backup_assets.py`, version/audit repositories, and a profile service that coordinates logo storage, immutable version snapshots, and durable audit events with actor `system/unauthenticated`.
+
+The schema head is migration `0003_business_profile_requirements`, which adds profile columns plus `business_profile_versions` and `audit_events` with immutability triggers. Backup sidecars can embed managed logo bytes under `managed_assets`; restore and relocation preserve `Logos/` and roll back on failure. Later Phase 7A-only statements remain historical and are superseded where they contradict this section.
 
 ## 1. Architecture goals
 
@@ -1161,6 +1167,46 @@ tree-level accessible names/descriptions and item tooltips are used instead.
 
 ### 19.7 Phase 6 boundary
 
-Phase 5 stops at presentation polish. Authentication, roles, users, business
-master data, and all Phase 6+ features remain unstarted pending owner review and
-explicit authorization.
+Phase 5 stops at presentation polish. Authentication, roles, users, and all
+other business master data remain unstarted pending owner review and explicit
+authorization.
+
+## 20. Phase 7A implementation record (2026-11-20)
+
+Phase 7A implements only the owner-approved Business Profile slice. It adds one
+reversible Alembic revision, one single-row table, one Qt-free domain/service
+pair, one QtCore-only view model, and one presentation-only Settings view.
+
+### 20.1 Layering
+
+- `app/domain/business_profile.py` owns mandatory-field, normalization, and
+  completion rules. It imports neither Qt nor SQLAlchemy.
+- `app/infrastructure/database/models/business_profile.py` and
+  `app/infrastructure/database/business_profile_repository.py` own mapping and
+  persistence only. The repository does not validate business rules.
+- `app/services/business_profile_service.py` owns validation calls, unit-of-work
+  boundaries, commit/rollback, safe storage-error messages, and the factory that
+  follows the current `DatabaseRuntime` after restore or relocation.
+- `app/ui/viewmodels/business_profile_viewmodel.py` imports QtCore only. It maps
+  service results into one immutable snapshot and never imports QtWidgets.
+- `app/ui/views/business_profile_view.py` renders the snapshot and forwards user
+  input. It contains no validation, migration, or persistence logic.
+- `AppContext` exposes `business_profile_factory`; `MainWindow` passes it through
+  and rebuilds the Settings view after a database change.
+
+### 20.2 Failure behavior
+
+- Missing business name returns inline field errors and never writes.
+- Storage errors are logged with a correlation ID, produce a safe reference in
+  the status message, roll back the unit of work, and preserve the prior profile.
+- An unavailable database disables the form and explains that business data must
+  be set up or located first.
+- No sample profile is created, and no second row can be inserted because the
+  table enforces `CHECK (id = 1)`.
+
+### 20.3 Boundaries retained
+
+Tax fields, GSTIN, logo/attachments, bank details, print/PDF output, audit UI,
+authentication/roles, customers, suppliers, catalogue, transactions, accounting,
+and reporting remain out of scope. Outstanding owner decisions were not silently
+resolved by this implementation.

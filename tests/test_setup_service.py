@@ -11,10 +11,12 @@ from app.core.config import AppConfig, ConfigService
 from app.core.exceptions import ConfigurationError, SetupError
 from app.infrastructure.database.config import DatabaseConfig
 from app.infrastructure.database.engine import Database
-from app.infrastructure.database.migrations import MigrationManager
+from app.infrastructure.database.migrations import MigrationManager, application_head_revision
 from app.infrastructure.filesystem.drives import DriveInfo, DriveType
 from app.infrastructure.filesystem.validation import DataLocationValidator
 from app.services.setup_service import SetupPersistenceError, SetupResult, SetupService
+
+HEAD_REVISION = application_head_revision()
 
 
 def _validator() -> DataLocationValidator:
@@ -64,7 +66,7 @@ def test_initialize_creates_database_directories_and_configuration(tmp_path: Pat
         assert not result.adopted_existing_database
         assert result.data_root == root
         assert result.database_path.is_file()
-        assert result.migration.current_revision == "0001_baseline"
+        assert result.migration.current_revision == HEAD_REVISION
         assert result.health.healthy
         for directory in result.layout.required_directories():
             assert directory.is_dir()
@@ -112,7 +114,7 @@ def test_existing_healthy_database_is_adopted_without_overwriting(tmp_path: Path
     try:
         assert result.adopted_existing_database
         assert result.database_path == database_path
-        assert result.migration.current_revision == "0001_baseline"
+        assert result.migration.current_revision == HEAD_REVISION
         assert sentinel.read_text(encoding="utf-8") == "keep"
     finally:
         _close(result)
@@ -173,7 +175,7 @@ def test_attach_existing_adopts_a_healthy_database(tmp_path: Path) -> None:
 
     try:
         assert result.adopted_existing_database
-        assert result.migration.current_revision == "0001_baseline"
+        assert result.migration.current_revision == HEAD_REVISION
         assert config_service.load().database_path == str(database_path)
     finally:
         _close(result)

@@ -27,6 +27,7 @@ from app.core import constants
 from app.core.config import ConfigService
 from app.core.exceptions import RestoreError
 from app.domain.backup import BackupRecord, BackupType
+from app.domain.backup_assets import ManagedBackupAsset
 from app.infrastructure.backup.directories import BackupDirectories
 from app.infrastructure.backup.hashing import sha256_file
 from app.infrastructure.backup.history import BackupHistory
@@ -44,6 +45,7 @@ from app.infrastructure.backup.retention import clean_old_rollback_copies
 from app.infrastructure.backup.snapshot import (
     DatabaseVerification,
     create_snapshot,
+    fsync_directory,
     verify_database_file,
 )
 from app.infrastructure.backup.state import BackupStateStore
@@ -76,6 +78,7 @@ class RestoreResult:
     rollback_path: Path
     verification: DatabaseVerification
     duration_ms: int
+    managed_assets_restored: int = 0
 
 
 class RestoreService:
@@ -165,6 +168,16 @@ class RestoreService:
                     "The selected backup was not verified successfully and cannot be restored."
                 ),
             )
+        if metadata.managed_assets:
+            config = self._config_service.load()
+            if config.data_root is None:
+                raise RestoreError(
+                    "backup contains managed assets but no data root is configured",
+                    user_message=(
+                        "This backup contains business logo files, but no business data folder "
+                        "is configured. Set up or locate the business data before restoring."
+                    ),
+                )
 
         try:
             actual_size = path.stat().st_size
@@ -263,6 +276,12 @@ class RestoreService:
         staging_path = database_path.parent / constants.RESTORE_STAGING_FILENAME
         rollback_dir = database_path.parent / constants.ROLLBACK_DIR_NAME
         rollback_path: Path | None = None
+        asset_staging: Path | None = None
+        asset_rollback: Path | None = None
+        asset_target: Path | None = None
+        asset_source_existed = False
+        assets_staged = False
+        assets_replaced = False
         safety: BackupResult | None = None
         reopened: Database | None = None
         replacing = False
@@ -306,6 +325,19 @@ class RestoreService:
                         "restore was stopped before replacing anything."
                     ),
                 )
+
+            if candidate.metadata.managed_assets:
+                self._report(progress, 54, "Preparing managed profile files")
+                asset_target = Path(config.data_root) / constants.DATA_LOGOS_DIR
+                asset_staging = database_path.parent / constants.RESTORE_ASSETS_STAGING_DIR
+                asset_rollback = rollback_dir / constants.RESTORE_ASSETS_ROLLBACK_DIR
+                asset_source_existed = self._stage_managed_assets(
+                    asset_staging,
+                    asset_rollback,
+                    asset_target,
+                    candidate.metadata.managed_assets,
+                )
+                assets_staged = True
 
             self._report(progress, 56, "Staging the selected backup")
             self._copier(candidate.record.path, staging_path)
@@ -377,6 +409,27 @@ class RestoreService:
                     ),
                 )
 
+            if (
+                assets_staged
+                and asset_staging is not None
+                and asset_target is not None
+                and asset_rollback is not None
+            ):
+                marker.write(
+                    OperationMarker(
+                        operation=RESTORE_MARKER,
+                        phase="replacing-managed-assets",
+                        started_at_utc=started,
+                        database_path=str(database_path),
+                        detail=candidate.record.file_name,
+                    )
+                )
+                self._report(progress, 88, "Replacing managed profile files")
+                self._replace_managed_assets(
+                    asset_staging, asset_target, asset_rollback, asset_source_existed
+                )
+                assets_replaced = True
+
             self._runtime.install(reopened)
             reopened = None
             marker.clear()
@@ -401,6 +454,7 @@ class RestoreService:
                 rollback_path=rollback_path,
                 verification=reopened_verification,
                 duration_ms=elapsed,
+                managed_assets_restored=len(candidate.metadata.managed_assets),
             )
         except Exception as exc:
             if reopened is not None:
@@ -408,23 +462,42 @@ class RestoreService:
                 reopened = None
             if closed:
                 self._runtime.close()
-            rolled_back = False
+            database_rolled_back = False
+            asset_rolled_back = not assets_replaced
             rollback_error: Exception | None = None
+            if (
+                assets_replaced
+                and asset_target is not None
+                and asset_rollback is not None
+            ):
+                try:
+                    self._report(progress, 90, "Rolling back managed profile files")
+                    self._restore_managed_assets(
+                        asset_target, asset_rollback, asset_source_existed
+                    )
+                except Exception as rollback_exc:  # noqa: BLE001 - recovery boundary
+                    asset_rolled_back = False
+                    rollback_error = rollback_exc
+                    logger.critical("Managed asset rollback failed", exc_info=True)
+
             if replacing and rollback_path is not None and rollback_path.is_file():
                 try:
-                    self._report(progress, 90, "Rolling back the previous database")
+                    self._report(progress, 92, "Rolling back the previous database")
                     _remove_sidecars(database_path)
                     self._replace(rollback_path, database_path)
                     _remove_sidecars(database_path)
                     recovered = self._reopen(database_path)
                     self._runtime.install(recovered)
                     marker.clear()
-                    rolled_back = True
+                    database_rolled_back = True
                     logger.warning("Restore failed and the previous database was restored")
                 except Exception as rollback_exc:  # noqa: BLE001 - recovery boundary
-                    rollback_error = rollback_exc
+                    rollback_error = rollback_error or rollback_exc
                     logger.critical("Restore rollback failed", exc_info=True)
 
+            rolled_back = database_rolled_back and asset_rolled_back
+            if asset_staging is not None and (not assets_replaced or asset_rolled_back):
+                shutil.rmtree(asset_staging, ignore_errors=True)
             staging_path.unlink(missing_ok=True)
             if not rolled_back:
                 if replacing:
@@ -454,6 +527,80 @@ class RestoreService:
                     "folder."
                 ),
             ) from exc
+
+    def _stage_managed_assets(
+        self,
+        staging_dir: Path,
+        rollback_dir: Path,
+        target_dir: Path,
+        assets: tuple[ManagedBackupAsset, ...],
+    ) -> bool:
+        source_existed = target_dir.is_dir()
+        shutil.rmtree(staging_dir, ignore_errors=True)
+        shutil.rmtree(rollback_dir, ignore_errors=True)
+        rollback_dir.mkdir(parents=True, exist_ok=True)
+        if source_existed:
+            shutil.copytree(target_dir, rollback_dir, dirs_exist_ok=True)
+        try:
+            for asset in assets:
+                destination = staging_dir / asset.relative_path
+                destination.parent.mkdir(parents=True, exist_ok=True)
+                destination.write_bytes(asset.content)
+                digest = sha256_file(destination)
+                if destination.stat().st_size != asset.size_bytes or digest != asset.sha256:
+                    raise RestoreError(
+                        f"staged managed asset failed verification: {asset.relative_path}",
+                        user_message=(
+                            "A logo file in the backup did not pass verification. The current "
+                            "database was not replaced."
+                        ),
+                    )
+            if assets:
+                fsync_directory(staging_dir)
+        except OSError as exc:
+            raise RestoreError(
+                f"managed assets could not be staged: {exc}",
+                user_message=(
+                    "The logo files in the backup could not be staged. The current database was "
+                    "not replaced."
+                ),
+            ) from exc
+        return source_existed
+
+    def _replace_managed_assets(
+        self,
+        staging_dir: Path,
+        target_dir: Path,
+        rollback_dir: Path,
+        source_existed: bool,
+    ) -> None:
+        del rollback_dir, source_existed
+        source = staging_dir / constants.DATA_LOGOS_DIR
+        if not source.is_dir():
+            raise RestoreError(
+                f"staged managed asset folder is missing: {source}",
+                user_message="The staged logo files could not be applied to the restored data.",
+            )
+        target_dir.parent.mkdir(parents=True, exist_ok=True)
+        if target_dir.is_dir():
+            shutil.rmtree(target_dir)
+        elif target_dir.exists():
+            target_dir.unlink()
+        shutil.move(str(source), str(target_dir))
+        shutil.rmtree(staging_dir, ignore_errors=True)
+
+    def _restore_managed_assets(
+        self,
+        target_dir: Path,
+        rollback_dir: Path,
+        source_existed: bool,
+    ) -> None:
+        if target_dir.is_dir():
+            shutil.rmtree(target_dir)
+        elif target_dir.exists():
+            target_dir.unlink()
+        if source_existed and rollback_dir.is_dir():
+            shutil.move(str(rollback_dir), str(target_dir))
 
     def _confirm_safety_backup(self, result: BackupResult) -> None:
         verification = self._verifier(result.path)

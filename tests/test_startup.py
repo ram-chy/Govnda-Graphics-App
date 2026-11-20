@@ -17,7 +17,9 @@ from pathlib import Path
 
 from app.infrastructure.database.config import DatabaseConfig
 from app.infrastructure.database.engine import Database
-from app.infrastructure.database.migrations import MigrationManager
+from app.infrastructure.database.migrations import MigrationManager, application_head_revision
+
+HEAD_REVISION = application_head_revision()
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 
@@ -143,7 +145,7 @@ def test_configured_database_opens_and_logs_location(tmp_path: Path) -> None:
     assert result.returncode == 0, result.stderr
     content = _log_text(tmp_path)
     assert "Database ready" in content
-    assert "schema=0001_baseline" in content
+    assert f"schema={HEAD_REVISION}" in content
     assert f"data root={data_root}" in content
     assert "Main window shown" in content
     assert "ERROR" not in content

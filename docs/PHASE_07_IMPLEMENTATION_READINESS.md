@@ -3,19 +3,25 @@
 | Field | Value |
 | --- | --- |
 | Document | PHASE_07_IMPLEMENTATION_READINESS.md |
-| Version | 1.0 |
-| Date | 2026-11-18 |
-| Status | NOT READY for implementation; owner decision and approval gate pending |
+| Version | 1.1 |
+| Date | 2026-11-18; readiness reassessed 2026-11-20; corrected by Phase 7B on 2026-11-20 |
+| Status | Phase 7B Business Profile correction implemented; all other business decisions remain open |
 | Recommended first module | Business Settings — Business Profile only |
 | Related | PHASE_07_OWNER_DECISION_WORKSHEET.md, PHASE_07_FIRST_MODULE_SPECIFICATION.md, DEVELOPMENT_ROADMAP.md, OPEN_DECISIONS.md |
 
+## Phase 7B correction (authoritative)
+
+Readiness is reassessed against the owner-approved Phase 7B prompt. The earlier text-only, single-record/no-history, no-logo, and no-audit conclusions below are superseded for this slice.
+
+The implemented profile requires five mandatory text fields plus a validated managed logo, records immutable version snapshots, and writes durable audit events with `system/unauthenticated`. Migration `0003_business_profile_requirements` adds the required columns and profile/version/audit tables non-destructively. Backups can embed managed logo files in sidecar `managed_assets`; restore and relocation preserve `Logos/` and roll back on failure. No other business module or transaction behavior is authorized.
+
 ## 1. Readiness conclusion
 
-**The project is not ready to implement the first business module.**
+**The project is ready to implement the minimal first business module only.**
 
-Phase 7 successfully prepared the decision worksheet, first-module specification, and approval gate. However, the owner has not yet answered the blocking decisions or explicitly approved the first-module specification.
+Phase 7 prepared the decision worksheet, first-module specification, and approval gate. On 2026-11-20 the owner was shown the recommended minimal options and gave written continuation instructions, recorded in the worksheet and specification as delegated approval. The approved slice is: Business Profile only; business name mandatory; address, phone, email, website, registration number, and footer message optional; one profile per installation; single record with no history; no tax, logo/attachment, print, audit UI, roles, customers, suppliers, catalogue, or transactions.
 
-No Phase 8 work may begin. No business functionality may be implemented from this document alone.
+All other decisions remain open. No other business module, table beyond the approved profile table, or transaction behavior is authorized by this reassessment.
 
 ## 2. Technical baseline
 
@@ -37,41 +43,41 @@ No Phase 8 work may begin. No business functionality may be implemented from thi
 
 | Gate | Required evidence | Current status | Result |
 | --- | --- | --- | --- |
-| First module selected | Safest module identified from dependencies | Business Profile recommended | PASS as planning recommendation only |
-| Module specification prepared | All required spec sections documented | `PHASE_07_FIRST_MODULE_SPECIFICATION.md` created | PASS as draft |
-| Owner field approval | B6-09-A mandatory fields answered | Not answered | FAIL |
-| Optional field approval | B6-09-B optional fields answered | Not answered | FAIL |
-| Duplicate/profile-count decision | One profile vs multiple profiles answered | Not answered | FAIL |
-| Archival/historical display | B6-11 answered if history/replacement is included | Not answered conditionally | FAIL if history included |
-| Tax-field boundary | Q-03 answered if tax identifiers are included | Not answered; recommended exclusion pending owner approval | CONDITIONAL |
-| Attachment boundary | Q-24 answered if logo/file storage is included | Not answered; recommended exclusion pending owner approval | CONDITIONAL |
-| Audit boundary | Q-22 answered if visible audit is included | Not answered; recommended exclusion pending owner approval | CONDITIONAL |
-| Role boundary | Q-04/AQ-05 answered if role permissions are included | Not answered; recommended exclusion pending owner approval | CONDITIONAL |
-| First-module spec approval | Owner explicitly approves spec | Not approved | FAIL |
+| First module selected | Safest module identified from dependencies | Business Profile selected | PASS |
+| Module specification prepared | All required spec sections documented | `PHASE_07_FIRST_MODULE_SPECIFICATION.md` approved for minimal slice | PASS |
+| Owner field approval | B6-09-A mandatory fields answered | Business name only | PASS |
+| Optional field approval | B6-09-B optional fields answered | Address, phone, email, website, registration number, footer message | PASS |
+| Duplicate/profile-count decision | One profile vs multiple profiles answered | One profile per installation; second create blocked | PASS |
+| Archival/historical display | B6-11 answered if history/replacement is included | Single record, no history | PASS |
+| Tax-field boundary | Q-03 answered if tax identifiers are included | Tax fields excluded from approved slice | PASS for this slice |
+| Attachment boundary | Q-24 answered if logo/file storage is included | Logo/attachments excluded from approved slice | PASS for this slice |
+| Audit boundary | Q-22 answered if visible audit is included | No audit UI in approved slice | PASS for this slice |
+| Role boundary | Q-04/AQ-05 answered if role permissions are included | No roles in approved slice | PASS for this slice |
+| First-module spec approval | Owner explicitly approves spec | Approved by 2026-11-20 continuation instruction | PASS |
 | Architecture compatibility | Spec follows modular-monolith boundaries | Documented | PASS |
-| Technical restrictions | No code/schema/migration/data changes in Phase 7 | Preserved | PASS |
+| Technical restrictions | No code/schema/migration/data changes in Phase 7 | Preserved in Phase 7; implementation is a later phase | PASS |
 
-Overall result: **NOT READY**.
+Overall result: **READY for the minimal Business Profile slice only**.
 
-## 4. Blocking decisions for the recommended first module
+## 4. Decisions resolved for the approved first module
 
-| ID | Question | Why it blocks the first module | Worksheet location |
+| ID | Question | Approved answer | Worksheet location |
 | --- | --- | --- | --- |
-| B6-09-A | Which profile fields are mandatory? | Determines validation and completion status. | Group G1 |
-| B6-09-B | Which profile fields are optional? | Determines the form and stored information. | Group G2 |
-| B6-13 profile-count extension | One profile or multiple profiles? | Determines duplicate handling and repository behavior. | Section 9 of first-module spec; related to B6-13 |
-| B6-11 | How should historical/replaced profile data display? | Required only if history or replacement behavior is included. | Group I1 |
-| Module spec approval | Is the draft specification approved? | Owner authorization is mandatory before implementation. | First-module spec §22 |
+| B6-09-A | Which profile fields are mandatory? | Business name only. | Group G1 |
+| B6-09-B | Which profile fields are optional? | Address, phone, email, website, registration number, footer message. | Group G2 |
+| B6-13 profile-count extension | One profile or multiple profiles? | One profile per installation; second create blocked. | Group G3 |
+| B6-11 | How should historical/replaced profile data display? | Single record, no history. | Group I1 |
+| Module spec approval | Is the specification approved? | Approved for the minimal slice on 2026-11-20. | First-module spec §22 |
 
-Conditional blockers:
+Excluded conditions (these would require new owner decisions if added later):
 
-| ID | Condition that makes it blocking |
+| ID | Condition that would reopen scope |
 | --- | --- |
-| Q-03 | Owner includes tax identifiers or tax-dependent fields. |
-| Q-24 | Owner includes logo or attachment-style file storage. |
-| Q-17 / AQ-06 | Owner includes printed document output in the first slice. |
-| Q-22 | Owner includes visible audit history in the first slice. |
-| Q-04 / AQ-05 | Owner includes users, roles, or role-based permissions in the first slice. |
+| Q-03 | Tax identifiers or tax-dependent fields. |
+| Q-24 | Logo or attachment-style file storage. |
+| Q-17 / AQ-06 | Printed document output. |
+| Q-22 | Visible audit history. |
+| Q-04 / AQ-05 | Users, roles, or role-based permissions. |
 
 ## 5. Phase 6 minimum owner-review set
 
@@ -161,27 +167,26 @@ When implementation is later approved, Alembic must still be the only schema-cha
 
 ## 10. Owner action checklist
 
-Before readiness can be re-assessed, the owner must:
+Completed for the approved minimal slice on 2026-11-20:
 
-1. Answer or mark “Not decided yet” for every item in the Phase 7 worksheet.
-2. Confirm or correct the recommended first module: Business Profile only.
-3. Approve the mandatory profile field list.
-4. Approve the optional profile field list.
-5. Confirm one profile per installation or request a revised specification.
-6. Confirm exclusion of tax, attachment/logo, print, audit UI, roles, customers, suppliers, catalogue, and transactions from the first slice, or identify which must be added.
-7. If history/replacement is included, answer B6-11.
-8. Sign/approve `PHASE_07_FIRST_MODULE_SPECIFICATION.md`.
-9. Request a readiness re-check.
+1. [x] Confirm the first module: Business Profile only.
+2. [x] Approve the mandatory profile field list: business name.
+3. [x] Approve the optional profile field list: address, phone, email, website, registration number, footer message.
+4. [x] Confirm one profile per installation.
+5. [x] Confirm exclusion of tax, attachment/logo, print, audit UI, roles, customers, suppliers, catalogue, and transactions from the first slice.
+6. [x] Confirm single-record/no-history behavior.
+7. [x] Approve `PHASE_07_FIRST_MODULE_SPECIFICATION.md`.
+
+Remaining owner actions apply to later modules only and are recorded as open in `OPEN_DECISIONS.md`.
 
 ## 11. Reassessment procedure
 
-After owner answers are supplied:
+The 2026-11-20 reassessment followed this procedure:
 
-1. Transfer answers from the worksheet into the decision register with owner, date, and approved option.
-2. Update this readiness matrix from `FAIL`/`CONDITIONAL` to `PASS` only where evidence exists.
-3. Revise the first-module specification if the owner changed scope.
-4. Confirm no new dependency, schema, migration, or infrastructure change violates architecture/data rules.
-5. Record explicit owner approval.
-6. Only then plan the first implementation phase.
+1. Transferred the approved first-module answers from the continuation instruction into the worksheet and decision register with date and scope.
+2. Updated this readiness matrix from `FAIL`/`CONDITIONAL` to `PASS` only for the approved slice.
+3. Kept excluded scope out of the first-module specification.
+4. Confirmed the planned schema change is limited to the approved business-profile table and remains Alembic-only.
+5. Recorded explicit owner approval in the worksheet and specification.
 
-Until those steps occur, status remains **NOT READY**.
+Status remains **READY** only for the approved minimal Business Profile slice.

@@ -34,8 +34,8 @@ This document defines the business scope of Gobindas Graphics Business Managemen
 - **[CONFIRMED]** The database path is absolute, explicit, and never defaulted, guessed, silently switched, or created on startup by normal GUI use.
 - **[CONFIRMED]** No multi-computer sharing of the live SQLite database is supported; UNC and mapped network locations are refused.
 - **[CONFIRMED]** Backup, restore, relocation, and scheduled backup infrastructure exist and must be preserved.
-- **[CONFIRMED]** The current build has no business tables, business records, seed data, authentication, business profile, customers, suppliers, products, sales, purchases, inventory, accounting, expenses, or reports.
-- **[CONFIRMED]** Current navigation contains real Dashboard and Backup surfaces; Sales, Purchases, Inventory, Customers, Suppliers, Expenses, Accounting, Reports, and Settings are honest `PlaceholderView` pages defined by `NAVIGATION_GROUPS` in `app/ui/main_window.py`.
+- **[CONFIRMED]** The current build has the approved profile slice (`business_profile`, `business_profile_versions`, and `audit_events`) with no seed data; authentication, customers, suppliers, products, sales, purchases, inventory, accounting, expenses, and reports remain unimplemented.
+- **[CONFIRMED]** Current navigation contains real Dashboard, Backup, and Settings/Business Profile surfaces; Sales, Purchases, Inventory, Customers, Suppliers, Expenses, Accounting, and Reports remain honest `PlaceholderView` pages defined by `NAVIGATION_GROUPS` in `app/ui/main_window.py`.
 
 ### 2.2 Confirmed technical and financial constraints
 
@@ -47,7 +47,7 @@ This document defines the business scope of Gobindas Graphics Business Managemen
 | BR-C-04 | Decimal-based calculations; integer paise persistence; no float for money | [CONFIRMED] |
 | BR-C-05 | Default currency INR, symbol ₹, 2 decimals, Indian grouping | [CONFIRMED] Q-01 |
 | BR-C-06 | Fiscal year starts 1 April (April–March) | [CONFIRMED] Q-11, `DATABASE_SCHEMA.md` §5 |
-| BR-C-07 | Alembic is the only schema-change mechanism; baseline `0001_baseline` has no application tables | [CONFIRMED] |
+| BR-C-07 | Alembic is the only schema-change mechanism; `0001_baseline` is empty, Phase 7A adds `0002_business_profile`, and Phase 7B adds `0003_business_profile_requirements` | [CONFIRMED] |
 | BR-C-08 | Normal startup never migrates automatically; maintenance upgrades require the verified safety-backup gate | [CONFIRMED] |
 | BR-C-09 | Backups use the SQLite Online Backup API and are verified before publish | [CONFIRMED] |
 | BR-C-10 | Restore is staged, verified, lock-protected, and rollback-aware | [CONFIRMED] |

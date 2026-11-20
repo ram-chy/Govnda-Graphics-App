@@ -3,13 +3,19 @@
 | Field | Value |
 | --- | --- |
 | Document | DATABASE_SCHEMA.md |
-| Version | 1.2 |
-| Date | 2026-11-14 |
-| Status | Phase 3 setup implemented — **baseline unchanged, no application tables, no business table approved** |
+| Version | 1.4 |
+| Date | 2026-11-20 |
+| Status | Phase 7B implemented — profile, version, and audit tables; all other business tables remain proposed |
 | Related | BLUEPRINT.md, ARCHITECTURE.md, BACKUP_STRATEGY.md |
-| Schema baseline | `0001_baseline` (empty application schema); business tables remain proposed |
+| Schema baseline | `0001_baseline`, `0002_business_profile`, and implemented `0003_business_profile_requirements` |
 
-> **Important:** Every business table in this document is **proposed**. None is approved for implementation. Phase 2 created only Alembic's `alembic_version` table plus the SQLite file-identity PRAGMAs; it deliberately created no `schema_metadata`, `app_settings`, `business_profile`, or `audit_logs` table. Tables for unconfirmed workflows are marked **[PROVISIONAL]** and must not be created during initialization. The only implemented decisions here are storage conventions, integrity rules, the money representation, and the migration strategy.
+> **Important:** The implemented profile slice now comprises `business_profile`, `business_profile_versions`, and `audit_events`. Phase 2 created only Alembic's `alembic_version` table plus the SQLite file-identity PRAGMAs; Phase 7A added `business_profile`; Phase 7B corrects it with migration `0003_business_profile_requirements`. Every other business table in this document is **proposed**. Tables for unconfirmed workflows are marked **[PROVISIONAL]** and must not be created during initialization.
+
+## Phase 7B implemented schema correction (authoritative)
+
+Migration `0003_business_profile_requirements` adds `secondary_phone`, `logo_reference`, and `version_number` to `business_profile`, creates `business_profile_versions` and `audit_events`, adds immutability triggers, and backfills the existing active profile with version 1 and one audit event without changing its values. The application head is `0003_business_profile_requirements`.
+
+`logo_reference` stores a safe relative reference under `Logos/`, never an absolute path. Version rows retain mandatory/optional field values and the effective logo reference. Audit rows use actor `system/unauthenticated`, retain payloads indefinitely in this slice, and have no ordinary UI. Backup sidecars use optional `managed_assets` entries for logo bytes with size and SHA-256 verification. Historical Phase 7A statements saying no history, logo path, or audit table existed are superseded for this slice.
 
 ## 1. Design principles
 
@@ -144,7 +150,7 @@ line_total_minor = line_net_minor + line_tax_minor
 | Table | Purpose | Status |
 | --- | --- | --- |
 | `app_settings` | Key/value internal settings that must travel with the DB | Proposed |
-| `business_profile` | Single-row business identity and defaults | Proposed |
+| `business_profile` | Single-row business identity; implemented in Phase 7A | Implemented |
 | `document_sequences` | Next number per document type/fiscal year | Proposed |
 | `audit_logs` | Append-only record of significant actions | Proposed |
 | `attachments` | Metadata for files stored under `Attachments\` | Proposed |
@@ -214,7 +220,7 @@ Reports are queries/views, not stored tables, except optional saved-report defin
 
 These are design sketches, not DDL. Column lists will be finalized per module with the owner. All tables include `created_at`, `updated_at`, and `created_by` where meaningful unless noted.
 
-### 7.1 `business_profile`
+### 7.1 `business_profile` (proposed design sketch, superseded by §19)
 
 | Column | Type | Constraints |
 | --- | --- | --- |
@@ -736,9 +742,32 @@ an open decision for a later phase.
 
 ### 18.4 Migration consequences for Phase 4
 
-- `0001_baseline` remains the only revision. Phase 4 must add any pre-upgrade
-  safety backup before the first business schema migration.
+- `0001_baseline` was the only revision at Phase 3. Phase 4 added the pre-upgrade
+  safety-backup gate before the first business schema migration.
 - The configuration file remains outside the database and is not duplicated in a
   database settings table; Alembic's `alembic_version` remains the sole revision
   authority.
 - WAL sidecars remain runtime artifacts and are not part of schema state.
+
+## 19. Phase 7A implemented schema (2026-11-20)
+
+`0002_business_profile` adds the approved single-row table below. It is reversible
+by dropping the table; `PRAGMA application_id` and `PRAGMA user_version` remain
+owned by `0001_baseline`.
+
+| Column | Type | Constraints |
+| --- | --- | --- |
+| `id` | INTEGER | PK, `CHECK (id = 1)` named `ck_business_profile_single_row` |
+| `business_name` | TEXT(200) | NOT NULL; mandatory, validated in the application service |
+| `address` | TEXT(500) | NOT NULL, default `''` |
+| `phone` | TEXT(50) | NOT NULL, default `''` |
+| `email` | TEXT(200) | NOT NULL, default `''` |
+| `website` | TEXT(200) | NOT NULL, default `''` |
+| `registration_number` | TEXT(100) | NOT NULL, default `''` |
+| `footer_message` | TEXT(500) | NOT NULL, default `''` |
+| `created_at` | TEXT(32) | NOT NULL, UTC ISO-8601 from the application service |
+| `updated_at` | TEXT(32) | NOT NULL, UTC ISO-8601 from the application service |
+
+The single row is the only profile: the service upserts `id = 1`, and the database
+constraint rejects any second row. No tax fields, currency fields, logo path,
+bank details, history table, or audit table are included in this slice.

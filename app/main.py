@@ -342,6 +342,7 @@ def run(argv: list[str] | None = None) -> int:
             config_service=context.config_service,
             database_runtime=context.runtime,
             workspace_factory=context.workspace_factory,
+            business_profile_factory=context.business_profile_factory,
         )
         window.show()
 

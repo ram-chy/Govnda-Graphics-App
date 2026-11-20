@@ -4,10 +4,11 @@ A standalone, offline Windows desktop application for small-business management.
 Built with Python 3.14, PySide6 (Qt Widgets), and a layered MVVM / application
 service architecture.
 
-**Current status: Phase 5 complete; owner review pending.** The project contains
-the technical foundation, the database layer, the first-launch setup wizard, the
-backup/restore/scheduled-runner/relocation infrastructure, and the refined
-native desktop UI. There are no business tables, business modules, or sample data
+**Current status: Phase 7B Business Profile correction complete.** The project
+contains the technical foundation, the database layer, the first-launch setup
+wizard, the backup/restore/scheduled-runner/relocation infrastructure, the
+refined native desktop UI, and the corrected business profile with managed logos,
+version history, and audit events. No other business modules or sample data exist
 yet.
 
 ## Implemented scope
@@ -100,9 +101,25 @@ Phase 5:
 - Backup UI states for empty, unavailable, busy, verified-only restore, success
   toast, non-modal read warning, and modal decision errors.
 
-Explicitly not implemented (later phases): authentication, business profile,
-customers, suppliers, products, sales, purchases, inventory, accounting,
-expenses, and reports. No seeders or sample business data exist.
+Phase 7A and Phase 7B:
+
+- Single per-installation business profile with mandatory business name, address,
+  phone, email, footer message, and managed logo.
+- Optional secondary phone, website, and registration number.
+- Managed logo storage with PNG/JPG/JPEG content validation, 5 MB limit, safe
+  `Logos/` references, and failure-safe replacement.
+- Immutable profile version history and durable audit events with no ordinary audit UI.
+- Settings page with inline validation, logo selection/preview, history viewing,
+  empty/status states, and non-modal save feedback.
+- Reversible `0002_business_profile` and `0003_business_profile_requirements`
+  Alembic migrations; existing profile values are preserved by the Phase 7B backfill.
+- Backup sidecars can embed managed logo files; restore and relocation preserve
+  `Logos/` and roll back on failure.
+
+Explicitly not implemented (later phases): authentication, tax/business document
+details, bank details, general attachments, customers, suppliers, products, sales,
+purchases, inventory, accounting, expenses, and reports. No seeders or sample
+business data exist.
 
 ## Requirements
 

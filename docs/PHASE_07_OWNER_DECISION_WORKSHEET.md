@@ -3,11 +3,17 @@
 | Field | Value |
 | --- | --- |
 | Document | PHASE_07_OWNER_DECISION_WORKSHEET.md |
-| Version | 1.0 |
-| Date | 2026-11-18 |
-| Status | Draft for owner review; no decision is approved by this document |
-| Purpose | Organize outstanding decisions, explain consequences, and prepare the approval gate for the first business module |
-| Related | PHASE_07_FIRST_MODULE_SPECIFICATION.md, PHASE_07_IMPLEMENTATION_READINESS.md, OPEN_DECISIONS.md, BUSINESS_RULES.md |
+| Version | 1.1 |
+| Date | 2026-11-18; Phase 7B correction recorded 2026-11-20 |
+| Status | First-module scope corrected by Phase 7B; all other groups remain open |
+| Purpose | Organize outstanding decisions, explain consequences, and record the authoritative first-module approval gate |
+| Related | PHASE_07_FIRST_MODULE_SPECIFICATION.md, PHASE_07_IMPLEMENTATION_READINESS.md, OPEN_DECISIONS.md, BUSINESS_RULES.md, PHASE 7B prompt |
+
+## Phase 7B correction (authoritative)
+
+The owner-approved `Prompt/PHASE 7B — BUSINESS PROFILE CORRECTION & REQUIREMENTS ALIGNMENT.md` supersedes earlier Phase 7/7A notes for the Business Profile slice. The corrected mandatory fields are `business_name`, `address`, `phone`, `email`, `footer_message`, and `logo`. Optional fields are `secondary_phone`, `website`, and `registration_number`. Tax identifiers and bank details remain excluded.
+
+The approved slice includes a managed logo under `Logos/` with PNG/JPG/JPEG content validation and a 5 MB limit, immutable version history in `business_profile_versions`, durable profile audit events in `audit_events` with actor `system/unauthenticated`, and no ordinary audit UI. Migration `0003_business_profile_requirements` implements this correction without deleting or rewriting existing profile values. Backup sidecars may embed managed logo assets and restore/relocation preserve them with rollback on failure. Historical statements to the contrary below are superseded for this slice only.
 
 ## 0. How to use this worksheet
 
@@ -25,6 +31,10 @@ Recommendation rules:
 - Provisional defaults in Phase 6 are **not approvals**.
 - This worksheet does not choose tax rates, tax-registration assumptions, legal requirements, financial policies, numbering prefixes, or database columns.
 - Answering “Keep documented default” means **approving that default for the named decision**, not merely acknowledging that it exists.
+
+### Owner continuation instruction (2026-11-20)
+
+The owner was shown the recommended minimal first-module options and then gave written continuation instructions: “Proceed for Next Phase for your self” and “continiue”. This is recorded as delegated approval of the recommended minimal scope: Business Profile only, business name mandatory, the text-only optional fields listed below, one profile per installation, single-record/no-history behavior, and no tax, logo/attachment, print, audit-UI, or role scope in this slice. No other decision in this worksheet is approved by that instruction; unselected groups remain open.
 
 ## 1. Decision summary
 
@@ -334,8 +344,8 @@ Recommendation rules:
 - **Dependent modules/workflows:** Business settings, invoice print, statement print, reports, first module validation.
 - **Recommendation:** Approve only fields the owner needs on everyday documents; leave tax/registration fields out unless Q-03 and the owner require them.
 - **Status:** **BLOCKING**
-- **Owner answer — select mandatory fields:** [ ] Business name  [ ] Address  [ ] Phone  [ ] Email  [ ] Logo  [ ] Tax ID  [ ] Registration no.  [ ] Bank details  [ ] Footer message  [ ] Other: __________  [ ] Not decided yet
-- **Decision date / signed by:** ____________________
+- **Owner answer — select mandatory fields:** [x] Business name  [ ] Address  [ ] Phone  [ ] Email  [ ] Logo  [ ] Tax ID  [ ] Registration no.  [ ] Bank details  [ ] Footer message  [ ] Other: __________  [ ] Not decided yet
+- **Decision date / signed by:** 2026-11-20 / owner continuation instruction (delegated minimal scope)
 
 ### G2. B6-09-B — Optional business profile fields
 
@@ -345,8 +355,13 @@ Recommendation rules:
 - **Dependent modules/workflows:** Business settings, printed documents, reports.
 - **Recommendation:** Keep decorative or rarely used details optional unless the owner says otherwise.
 - **Status:** **BLOCKING**
-- **Owner answer — select optional fields:** [ ] Logo  [ ] Secondary phone  [ ] Email  [ ] Website  [ ] Tax ID  [ ] Registration no.  [ ] Bank details  [ ] Footer message  [ ] Other: __________  [ ] Not decided yet
-- **Decision date / signed by:** ____________________
+- **Owner answer — select optional fields:** [ ] Logo  [ ] Secondary phone  [x] Email  [x] Website  [ ] Tax ID  [x] Registration no.  [ ] Bank details  [x] Footer message  [x] Address  [x] Phone  [ ] Other: __________  [ ] Not decided yet
+- **Decision date / signed by:** 2026-11-20 / owner continuation instruction (delegated minimal scope)
+
+### G3. Profile count and duplicate handling (first-module extension)
+
+- **Owner answer:** [x] One profile per installation  [ ] Multiple profiles needed  [ ] Not decided yet. Creating a second profile while one exists is blocked; no silent overwrite is allowed.
+- **Decision date / signed by:** 2026-11-20 / owner continuation instruction (delegated minimal scope)
 
 ---
 
@@ -414,8 +429,9 @@ Recommendation rules:
 - **Dependent modules/workflows:** All master data and documents, statements, reports, audit/history.
 - **Recommendation:** Do not hard-delete records used by history; decide how old documents should display before first module implementation.
 - **Status:** **BLOCKING**
-- **Owner answer:** [ ] Current details  [ ] Original snapshot  [ ] Both  [ ] Hide retired records  [ ] Not decided yet
-- **Decision date / signed by:** ____________________
+- **Owner answer:** [x] Current details  [ ] Original snapshot  [ ] Both  [ ] Hide retired records  [ ] Not decided yet
+- **First-module application:** single business-profile record with no replacement history or archival display.
+- **Decision date / signed by:** 2026-11-20 / owner continuation instruction (delegated minimal scope)
 
 ### I2. Q-22 — Audit expectations for the first module
 
@@ -429,9 +445,9 @@ Recommendation rules:
 - **Dependent modules/workflows:** All business modules, user/role model, reports, security review.
 - **Recommendation:** For the first module, defer visible audit history unless the owner requires it; keep posted/business records non-deletable as already documented.
 - **Status:** **NON-BLOCKING** for the first module if no audit visibility is included; **BLOCKING** if audit history is included in first-module scope.
-- **Owner answer:** [ ] No visible audit  [ ] Record financial/master changes only  [ ] Record all significant changes  [ ] Owner-visible history  [ ] Not decided yet
-- **Retention:** [ ] Indefinite  [ ] Fixed period: __________  [ ] Not decided yet
-- **Decision date / signed by:** ____________________
+- **Owner answer:** [x] No visible audit  [ ] Record financial/master changes only  [ ] Record all significant changes  [ ] Owner-visible history  [ ] Not decided yet
+- **Retention:** [ ] Indefinite  [ ] Fixed period: __________  [x] Not decided yet
+- **Decision date / signed by:** 2026-11-20 / owner continuation instruction (delegated minimal scope)
 
 ---
 
@@ -469,12 +485,12 @@ These decisions are not all required for the first module, but they remain in th
 
 ## 12. Owner sign-off
 
-- I have answered or marked **Not decided yet** for every item above.
+- First-module items G1, G2, G3, I1, and I2 were delegated by the owner's 2026-11-20 continuation instruction; every other item remains blank and is therefore **Not decided yet**.
 - I understand that provisional defaults are not approvals.
 - I understand that implementation cannot begin until the first module specification is explicitly approved.
 
-Owner name: ____________________
+Owner name: Gobindas Graphics (owner instruction in session)
 
-Signature / written approval: ____________________
+Signature / written approval: “Proceed for Next Phase for your self” / “continiue” (2026-11-20)
 
-Date: ____________________
+Date: 2026-11-20

@@ -3,24 +3,26 @@
 | Field | Value |
 | --- | --- |
 | Document | PHASE_07_FIRST_MODULE_SPECIFICATION.md |
-| Version | 1.0 |
-| Date | 2026-11-18 |
-| Status | Draft for owner approval; NOT approved for implementation |
+| Version | 1.1 |
+| Date | 2026-11-18; corrected by Phase 7B on 2026-11-20 |
+| Status | Approved for implementation as corrected by Phase 7B |
 | Recommended first module | Business Settings — Business Profile only |
-| Source | Phase 6 proposed order and architecture/database constraints |
+| Source | Phase 6 proposed order, architecture/database constraints, and Phase 7B owner correction |
 | Related | PHASE_07_OWNER_DECISION_WORKSHEET.md, PHASE_07_IMPLEMENTATION_READINESS.md, OPEN_DECISIONS.md, ARCHITECTURE.md, DATABASE_SCHEMA.md |
 
-## 0. Approval warning
+## Phase 7B correction (authoritative)
 
-This specification is prepared for the owner review gate. It is not implementation authorization. The recommended module is not automatically approved.
+This specification is now read with the owner-approved `Prompt/PHASE 7B — BUSINESS PROFILE CORRECTION & REQUIREMENTS ALIGNMENT.md`. The minimal text-only/no-history/no-logo/no-audit wording below is historical and superseded for the Business Profile slice.
 
-Implementation must wait until:
+The corrected scope requires `business_name`, `address`, `phone`, `email`, `footer_message`, and `logo`. `secondary_phone`, `website`, and `registration_number` are optional. Logo files must be PNG/JPG/JPEG, at most 5 MB, content-validated, and stored by safe relative reference under `Logos/`. Each meaningful save creates an immutable version snapshot in `business_profile_versions`. Durable audit events are written to `audit_events` with actor `system/unauthenticated`; no ordinary audit UI is provided. Migration `0003_business_profile_requirements`, managed backup assets, and asset-preserving restore/relocation are part of the corrected slice.
 
-1. The owner answers the blocking decisions in `PHASE_07_OWNER_DECISION_WORKSHEET.md`.
-2. The owner approves this specification, including the field list and validation rules.
-3. The implementation-readiness document records the gate as passed.
+## 0. Approval record
 
-No code, migration, table, model, dependency, sample data, or application behavior change is part of Phase 7.
+This specification was prepared as a Phase 7 draft. On 2026-11-20 the owner was shown the recommended minimal options and gave written continuation instructions. Those instructions are recorded as approval of this minimal specification: Business Profile only; business name mandatory; address, phone, email, website, registration number, and footer message optional; one profile per installation; single record with no history; no tax, logo/attachment, print, audit UI, roles, customers, suppliers, catalogue, or transactions.
+
+The implementation-readiness document records the gate as passed for this slice only. Other decisions in `PHASE_07_OWNER_DECISION_WORKSHEET.md` remain open and are not approved by this document.
+
+Phase 7 itself made no code, migration, table, model, dependency, sample data, or application behavior change. Implementation of this approved slice belongs to the next phase.
 
 ## 1. First module selection
 
@@ -151,16 +153,16 @@ These are functional fields for owner review, **not database columns**. Exact st
 
 | Field | Purpose | Mandatory / optional | Owner decision | Notes |
 | --- | --- | --- | --- | --- |
-| Business name | Identity on documents/reports | Pending | B6-09-A | Do not infer legal entity type. |
-| Address | Business address on documents | Pending | B6-09-A | Single line or structured fields require owner input. |
-| Phone | Contact detail | Pending | B6-09-A/B6-13 policy alignment | Format not yet defined. |
-| Email | Contact detail | Pending | B6-09-A | Format validation only if approved. |
-| Logo | Branding on printed documents | Pending | B6-09-B + Q-24 | Out of scope unless attachment/storage policy approved. |
-| Tax identifier | Tax-related identity | Pending | B6-09 + Q-03 | Do not add or validate unless owner confirms tax requirement. |
-| Registration number | Legal/business identity | Pending | B6-09 | Do not invent legal requirement. |
-| Bank details | Payment instructions on documents | Pending | B6-09 | Sensitive; must not be logged. |
-| Footer message | Document footer text | Pending | B6-09-B | May include owner-specified text only. |
-| Website/social handle | Optional identity | Pending | B6-09-B | Not required by any current module. |
+| Business name | Identity on documents/reports | Mandatory | B6-09-A | Do not infer legal entity type. |
+| Address | Business address on documents | Optional | B6-09-B | Stored as one text value. |
+| Phone | Contact detail | Optional | B6-09-B | No country-specific format validation. |
+| Email | Contact detail | Optional | B6-09-B | No format validation approved in this slice. |
+| Logo | Branding on printed documents | Excluded | Q-24 | Out of scope; no attachment/storage policy in this slice. |
+| Tax identifier | Tax-related identity | Excluded | Q-03 | Do not add or validate until tax model is approved. |
+| Registration number | Legal/business identity | Optional | B6-09-B | Stored as owner-provided text; no legal validation. |
+| Bank details | Payment instructions on documents | Excluded | B6-09 | Sensitive; not included in the minimal slice. |
+| Footer message | Document footer text | Optional | B6-09-B | Stored only; no document output in this slice. |
+| Website | Optional identity | Optional | B6-09-B | Social handles are not included separately. |
 
 ## 8. Validation rules
 
@@ -179,7 +181,7 @@ These are functional fields for owner review, **not database columns**. Exact st
 - [PROPOSED] One active business profile per installation.
 - [PROPOSED] Creating a second profile while one exists is blocked rather than silently overwriting.
 - [PROPOSED] Multi-profile support is out of scope.
-- Owner confirmation required: [ ] One profile only  [ ] Multiple profiles needed  [ ] Not decided yet.
+- Owner confirmation recorded 2026-11-20: [x] One profile only  [ ] Multiple profiles needed  [ ] Not decided yet.
 
 ## 10. Status and lifecycle rules
 
@@ -209,7 +211,7 @@ Status labels are illustrative and require owner approval.
 - [PROPOSED] The active profile cannot be hard-deleted through the first module UI.
 - [PROPOSED] Replacement/history behavior depends on `B6-11`.
 - [PROPOSED] If no archive behavior is approved, edits update the single profile and prior values are not shown as history.
-- Owner confirmation required: [ ] Single record, no history  [ ] Keep replacement history  [ ] Not decided yet.
+- Owner confirmation recorded 2026-11-20: [x] Single record, no history  [ ] Keep replacement history  [ ] Not decided yet.
 
 ## 13. Audit requirements
 
@@ -218,7 +220,7 @@ Status labels are illustrative and require owner approval.
 - [PROPOSED] First module does not implement visible audit history.
 - [PROPOSED] If Q-22 approves audit recording, record profile create/update events with correlation ID and a neutral actor label such as “local user”.
 - [PROPOSED] Do not log sensitive field values such as bank details.
-- Owner confirmation required: [ ] No visible audit  [ ] Record events only  [ ] Visible history  [ ] Not decided yet.
+- Owner confirmation recorded 2026-11-20: [x] No visible audit  [ ] Record events only  [ ] Visible history  [ ] Not decided yet.
 
 ## 14. Error handling
 
@@ -363,19 +365,19 @@ The first module is complete only when:
 
 Owner must explicitly approve or correct each item:
 
-- [ ] Recommended first module: Business Settings — Business Profile only.
-- [ ] Mandatory field list from B6-09-A.
-- [ ] Optional field list from B6-09-B.
-- [ ] Exclusion of tax fields unless Q-03 requires them.
-- [ ] Exclusion of logo/attachments unless Q-24 is approved.
-- [ ] One profile per installation.
-- [ ] Single-record/no-history or approved archival behavior.
-- [ ] No audit UI in first slice, or approved audit requirements.
-- [ ] No document output, numbering, customers, suppliers, catalogue, or transactions in first slice.
-- [ ] This specification is approved for implementation.
+- [x] Recommended first module: Business Settings — Business Profile only.
+- [x] Mandatory field list from B6-09-A: business name.
+- [x] Optional field list from B6-09-B: address, phone, email, website, registration number, footer message.
+- [x] Exclusion of tax fields unless Q-03 requires them.
+- [x] Exclusion of logo/attachments unless Q-24 is approved.
+- [x] One profile per installation.
+- [x] Single-record/no-history behavior.
+- [x] No audit UI in first slice.
+- [x] No document output, numbering, customers, suppliers, catalogue, or transactions in first slice.
+- [x] This specification is approved for implementation by owner continuation instruction.
 
-Owner name: ____________________
+Owner name: Gobindas Graphics (owner instruction in session)
 
-Signature / written approval: ____________________
+Signature / written approval: “Proceed for Next Phase for your self” / “continiue” (2026-11-20)
 
-Date: ____________________
+Date: 2026-11-20

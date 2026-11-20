@@ -3,11 +3,17 @@
 | Field | Value |
 | --- | --- |
 | Document | OPEN_DECISIONS.md |
-| Version | 1.1 |
-| Date | 2026-11-18 |
-| Status | Phase 7 worksheet prepared; no owner answers recorded; implementation remains blocked |
+| Version | 1.2 |
+| Date | 2026-11-18; Phase 7B correction recorded 2026-11-20 |
+| Status | Business Profile scope corrected by Phase 7B; all other decisions remain open |
 | Scope | All decisions requiring owner confirmation before business implementation, plus resolved constraints and deferred technical decisions |
 | Related | BUSINESS_REQUIREMENTS.md, BUSINESS_WORKFLOWS.md, MODULE_SPECIFICATIONS.md, BUSINESS_RULES.md, REPORTING_REQUIREMENTS.md, DEVELOPMENT_ROADMAP.md, PHASE_07_OWNER_DECISION_WORKSHEET.md, PHASE_07_IMPLEMENTATION_READINESS.md |
+
+## Phase 7B correction (authoritative)
+
+Phase 7B resolves the profile-specific parts of B6-09 and B6-11: one active profile plus immutable version history, with mandatory `business_name`, `address`, `phone`, `email`, `footer_message`, and `logo`, and optional `secondary_phone`, `website`, and `registration_number`. Profile logo rules are PNG/JPG/JPEG, at most 5 MB, content-validated, and stored under `Logos/` by safe relative reference.
+
+Durable profile audit events are implemented with actor `system/unauthenticated` and no ordinary audit UI. Audit retention/visibility policy and general attachment decisions remain open. Earlier entries saying business name alone was mandatory, history was excluded, or logo/audit were excluded are superseded for this slice only.
 
 ## 0. Decision handling rules
 
@@ -62,9 +68,9 @@
 | B6-06 | Purchase workflow: direct bill vs purchase order vs receipt | Affects purchase documents and approvals | No workflow approved | Direct bill is simplest; PO/receipt adds traceability and statuses | Purchases, inventory, approvals | [OPEN] |
 | B6-07 | Whether inventory/consumables are in scope | A graphics business may not need stock control | Confirm before designing inventory | No stock, consumables only, goods for resale, both; affects schema and reports | Inventory, stock postings, stock reports | [OPEN] |
 | B6-08 | Opening balances, advances, and cutover treatment | Determines starting balances and statement accuracy | Recommend entering reviewed opening balances only if history is needed; start fresh otherwise | No balances, manual opening balances, imported history; advances need separate decision | Payments, statements, P&L, reports | [OPEN] |
-| B6-09 | Business profile fields for printed documents | Affects invoice/statement headers and compliance-looking output | Profile must be defined before printable sales documents | Minimum identity/contact fields; tax fields only if Q-03 requires; logo attachment if Q-24 approved | Print/PDF documents | [OPEN] |
+| B6-09 | Business profile fields for printed documents | Affects invoice/statement headers and compliance-looking output | Approved for the first module only: business name mandatory; address, phone, email, website, registration number, footer message optional; tax/logo/bank excluded | Tax fields still require Q-03; logo/file storage still requires Q-24 | Print/PDF documents | [APPROVED FOR FIRST MODULE ONLY — 2026-11-20 owner continuation instruction; broader document-header policy still open] |
 | B6-10 | Approval policies and thresholds | Needed for discounts, voids, refunds, expenses, stock adjustments | No approvals in v1 is the simplest default, not approved | Specific actions require approval; amount thresholds; role-based approvals | Permissions, workflows, audit | [OPEN] |
-| B6-11 | Historical document display and master-record archival behavior | Needed to preserve history without hard deletes | Posted records should not be hard-deleted; display policy unapproved | Show original snapshot, show current master data, show both, hide voided records | Invoices, statements, audit, reports | [OPEN] |
+| B6-11 | Historical document display and master-record archival behavior | Needed to preserve history without hard deletes | First business-profile record is single-record/no-history; document display policy remains unapproved | Show original snapshot, show current master data, show both, hide voided records | Invoices, statements, audit, reports | [OPEN for documents; FIRST-MODULE PROFILE RULE APPROVED 2026-11-20] |
 | B6-12 | Dashboard metric definitions | Prevents fake or misleading dashboard numbers | Keep business metrics hidden until source rules are approved | Sales, collections, receivables, payables, expenses, jobs, stock value | Dashboard business metrics | [OPEN] |
 | B6-13 | Master-data required fields and duplicate policy | Needed before customer/supplier/catalogue implementation | No field list or duplicate rule approved | Name-only, contact-required, tax-ID uniqueness, phone/email duplicate checks | Customers, suppliers, catalogue | [OPEN] |
 
@@ -138,7 +144,7 @@ If any remain open, the next phase should limit itself to modules whose rules ar
 ## 8. Phase 7 traceability notes
 
 - Phase 7 prepared `docs/PHASE_07_OWNER_DECISION_WORKSHEET.md`, `docs/PHASE_07_FIRST_MODULE_SPECIFICATION.md`, and `docs/PHASE_07_IMPLEMENTATION_READINESS.md`.
-- No owner answer has been recorded in this register. No unanswered decision is approved, resolved, or downgraded by Phase 7.
+- The 2026-11-20 continuation instruction approved only the minimal first-module scope recorded in §1/B6-09, G3, and I1. No other unanswered decision is approved, resolved, or downgraded by Phase 7 or Phase 7A.
 - `Q-20` was added to this register for traceability because it is referenced in Phase 6 documents but was previously missing here. Its documented English-only default remains a provisional default, not owner approval.
 - Worksheet traceability:
   - Group A: `Q-03`, `Q-08`, `Q-09`, `Q-13`, `Q-14`.
@@ -152,4 +158,5 @@ If any remain open, the next phase should limit itself to modules whose rules ar
   - Group I: `B6-11`, `Q-22` as first-module behavioral decisions.
   - Group J: remaining open/deferred decisions for full register coverage.
 - ID namespace note: `BR-C-xx` is used locally in `BUSINESS_REQUIREMENTS.md` for confirmed technical constraints and in `BUSINESS_RULES.md` for confirmed business rules. When citing a `BR-C-xx` ID, include the document name to avoid ambiguity.
-- First-module readiness remains **NOT READY** until the owner answers the worksheet and explicitly approves the first-module specification.
+- First-module readiness was reassessed on 2026-11-20 after the owner's written continuation instruction. B6-09, one-profile/single-record/no-history behavior, B6-11 for the first profile slice, and the first-module specification are approved for that slice only.
+- The continuation instruction did not approve Q-03, Q-04, Q-07/B6-01, Q-08, Q-09, Q-10, Q-13/Q-14, B6-02, B6-07, B6-13, or any other open decision. Those remain open for later modules.

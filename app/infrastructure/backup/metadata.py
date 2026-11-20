@@ -19,6 +19,7 @@ from typing import Any
 from app.core import constants
 from app.core.exceptions import BackupError
 from app.domain.backup import BackupType
+from app.domain.backup_assets import ManagedAssetError, ManagedBackupAsset
 from app.infrastructure.backup.hashing import is_sha256
 
 _REQUIRED_TEXT = (
@@ -60,6 +61,7 @@ class BackupMetadata:
     trigger: str
     created_at_local: str | None = None
     meta_version: int = constants.BACKUP_METADATA_VERSION
+    managed_assets: tuple[ManagedBackupAsset, ...] = ()
 
     def __post_init__(self) -> None:
         if self.created_at_utc.tzinfo is None:
@@ -96,6 +98,7 @@ class BackupMetadata:
             "operation_result": self.operation_result,
             "duration_ms": self.duration_ms,
             "trigger": self.trigger,
+            "managed_assets": [asset.to_dict() for asset in self.managed_assets],
         }
 
     @classmethod
@@ -156,6 +159,7 @@ class BackupMetadata:
             trigger=str(data["trigger"]),
             created_at_local=local,
             meta_version=meta_version,
+            managed_assets=_managed_assets(data),
         )
 
 
@@ -200,6 +204,26 @@ def write_metadata_atomic(path: Path, metadata: BackupMetadata) -> None:
     finally:
         if temp_path is not None:
             temp_path.unlink(missing_ok=True)
+
+
+def _managed_assets(data: Mapping[str, Any]) -> tuple[ManagedBackupAsset, ...]:
+    raw = data.get("managed_assets", [])
+    if not isinstance(raw, list):
+        raise MetadataError("backup metadata managed_assets must be a list")
+    assets: list[ManagedBackupAsset] = []
+    seen: set[str] = set()
+    for entry in raw:
+        try:
+            asset = ManagedBackupAsset.from_dict(entry)
+        except ManagedAssetError as exc:
+            raise MetadataError(f"backup metadata managed asset is invalid: {exc}") from exc
+        if not asset.relative_path.startswith(f"{constants.DATA_LOGOS_DIR}/"):
+            raise MetadataError("backup metadata managed asset is outside a managed folder")
+        if asset.relative_path in seen:
+            raise MetadataError("backup metadata contains duplicate managed asset paths")
+        seen.add(asset.relative_path)
+        assets.append(asset)
+    return tuple(assets)
 
 
 def _integer(data: Mapping[str, Any], key: str) -> int:

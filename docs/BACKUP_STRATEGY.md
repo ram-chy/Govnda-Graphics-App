@@ -3,11 +3,17 @@
 | Field | Value |
 | --- | --- |
 | Document | BACKUP_STRATEGY.md |
-| Version | 1.3 |
-| Date | 2026-11-16 |
-| Status | Implemented for Phase 4 (automated tests passing); manual Windows integration drill not executed in this session |
+| Version | 1.4 |
+| Date | 2026-11-16; Phase 7B managed-asset support added 2026-11-20 |
+| Status | Implemented for Phase 4 and Phase 7B managed logo assets; manual Windows integration drill not executed in this session |
 | Priority | Core product feature |
 | Related | BLUEPRINT.md, ARCHITECTURE.md, DATABASE_SCHEMA.md, SECURITY_AND_DATA_PROTECTION.md |
+
+## Phase 7B managed assets (authoritative)
+
+The current data root includes `Logos/` as a required managed asset directory. Backup sidecars may include a `managed_assets` array whose entries contain a safe `Logos/...` relative path, byte size, SHA-256 checksum, and base64 content. Sidecars without `managed_assets` remain compatible with all existing backups.
+
+Backup creation includes managed logo bytes in the sidecar and in the free-space estimate. Restore validates each managed asset, stages it under `.restore-assets-staging`, keeps rollback copies under `Database/rollback/assets-rollback`, replaces `Logos/` only after the database is verified, and rolls back database and assets on failure. Relocation copies `Logos/` to the new data root and reports `managed_assets_relocated`. Historical layout notes that omit `Logos/` are superseded.
 
 ## 1. Principles
 

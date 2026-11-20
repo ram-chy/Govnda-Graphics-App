@@ -63,6 +63,10 @@ class DataRootLayout:
         return self.root / constants.DATA_ATTACHMENTS_DIR
 
     @property
+    def logos_dir(self) -> Path:
+        return self.root / constants.DATA_LOGOS_DIR
+
+    @property
     def exports_dir(self) -> Path:
         return self.root / constants.DATA_EXPORTS_DIR
 
@@ -84,6 +88,7 @@ class DataRootLayout:
             self.manual_backups_dir,
             self.safety_backups_dir,
             self.attachments_dir,
+            self.logos_dir,
             self.exports_dir,
             self.pdf_exports_dir,
             self.excel_exports_dir,
@@ -99,6 +104,7 @@ class DataRootLayout:
             (self.manual_backups_dir, "Manual backups (Phase 4)"),
             (self.safety_backups_dir, "Pre-upgrade and pre-restore safety copies (Phase 4)"),
             (self.attachments_dir, "Scanned documents and images"),
+            (self.logos_dir, "Managed business profile logos"),
             (self.exports_dir, "Generated PDF and Excel exports"),
             (self.pdf_exports_dir, "PDF exports"),
             (self.excel_exports_dir, "Excel exports"),

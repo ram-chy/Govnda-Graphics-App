@@ -113,4 +113,4 @@ def test_directory_plan_lists_every_folder(tmp_path: Path) -> None:
     assert plan
     assert plan[0][0] == tmp_path / "Business"
     assert all(path.is_absolute() for path, _purpose in plan)
-    assert len(plan) == 10
+    assert len(plan) == 11

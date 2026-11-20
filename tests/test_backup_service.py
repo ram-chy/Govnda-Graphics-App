@@ -15,6 +15,7 @@ from app.infrastructure.backup.lock import OperationLock
 from app.infrastructure.backup.metadata import read_metadata
 from app.infrastructure.backup.naming import metadata_path_for
 from app.infrastructure.backup.snapshot import DatabaseVerification
+from app.infrastructure.database.migrations import application_head_revision
 from tests.backup_helpers import (
     build_backup_service,
     build_directories,
@@ -26,6 +27,7 @@ from tests.backup_helpers import (
 )
 
 MOMENT = datetime(2026, 4, 5, 6, 7, 8, tzinfo=UTC)
+HEAD_REVISION = application_head_revision()
 
 
 def _verification(path: Path, *, ok: bool = True) -> DatabaseVerification:
@@ -58,7 +60,7 @@ def test_manual_backup_publishes_verified_file_and_metadata(tmp_path: Path) -> N
     assert probe_values(result.path) == ["first-row"]
     assert result.metadata.sha256 == sha256_file(result.path)
     assert result.metadata.backup_bytes == result.path.stat().st_size
-    assert result.metadata.schema_revision == "0001_baseline"
+    assert result.metadata.schema_revision == HEAD_REVISION
     assert result.metadata.trigger == "manual"
     assert result.verification.ok is True
 

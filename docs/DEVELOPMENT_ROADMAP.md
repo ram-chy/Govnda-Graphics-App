@@ -3,10 +3,14 @@
 | Field | Value |
 | --- | --- |
 | Document | DEVELOPMENT_ROADMAP.md |
-| Version | 1.5 |
-| Date | 2026-11-18 |
-| Status | Phases 0–6 complete; Phase 7 planning and approval gate prepared; owner answers pending; no business implementation started |
+| Version | 1.7 |
+| Date | 2026-11-18; Phase 7A and Phase 7B added 2026-11-20 |
+| Status | Phases 0–7 complete; Phase 7A and Phase 7B Business Profile correction implemented; other business decisions remain open |
 | Related | BLUEPRINT.md, ARCHITECTURE.md, DATABASE_SCHEMA.md, BACKUP_STRATEGY.md, BUSINESS_REQUIREMENTS.md, BUSINESS_WORKFLOWS.md, MODULE_SPECIFICATIONS.md, BUSINESS_RULES.md, REPORTING_REQUIREMENTS.md, OPEN_DECISIONS.md, PHASE_07_OWNER_DECISION_WORKSHEET.md, PHASE_07_FIRST_MODULE_SPECIFICATION.md, PHASE_07_IMPLEMENTATION_READINESS.md |
+
+## Phase 7B status (authoritative)
+
+Phase 7B corrects the Business Profile slice after Phase 7A. The corrected slice has six mandatory fields including a managed logo, three optional fields, immutable version history, durable profile audit events with `system/unauthenticated`, migration `0003_business_profile_requirements`, and managed logo preservation through backup, restore, and relocation. Phase 8 may depend on the corrected profile data and header rules. Earlier Phase 7A-only statements about text-only scope, no history, no logo, and no audit are historical and superseded for this slice only.
 
 ## 1. Principles
 
@@ -21,15 +25,15 @@
 ## 2. Phase map and dependencies
 
 ```text
-Phase 0 ─→ Phase 1 ─→ Phase 2 ─→ Phase 3 ─→ Phase 4 ─→ Phase 5 ─→ Phase 6 ─→ Phase 7 planning/gate ─→ First approved business module ─→ Phase 8 ─→ Phase 9 ─→ Phase 10 ─→ Phase 11 ─→ Phase 12
+Phase 0 ─→ Phase 1 ─→ Phase 2 ─→ Phase 3 ─→ Phase 4 ─→ Phase 5 ─→ Phase 6 ─→ Phase 7 planning/gate ─→ Phase 7A Business Profile ─→ Phase 8 ─→ Phase 9 ─→ Phase 10 ─→ Phase 11 ─→ Phase 12
 
 Historical/deferred auth candidate (formerly Phase 6):
 Q-04 / AQ-05 decision ─→ renumbered auth phase, only if required
 ```
 
 - Phase 6 is the completed business requirements, workflows, and module-planning documentation phase. It is not authentication implementation.
-- Phase 7 is now the owner-decision and first-module specification approval gate. It is documentation-only and does not authorize implementation.
-- The first approved business module is currently recommended as Business Settings — Business Profile only, but that recommendation is not owner approval.
+- Phase 7 was the owner-decision and first-module specification approval gate. It was documentation-only; its gate passed on 2026-11-20 for the minimal slice.
+- Phase 7A is the approved first business module: Business Settings — Business Profile only. Other modules remain blocked by their own decisions.
 - The historical authentication phase remains conditional and deferred. If Q-04/AQ-05 approves roles, it must be renumbered and placed according to the modules it affects.
 - Phase 4 depends on Phase 2 (database) and Phase 3 (known data root), not on the full UI.
 - Business master-data implementation needs the application shell from Phase 5 and owner approval of the module-specific rules in `OPEN_DECISIONS.md`.
@@ -45,8 +49,8 @@ Q-04 / AQ-05 decision ─→ renumbered auth phase, only if required
 | 5 | 1 | Phase 4 backend |
 | 6 | 5 and explicit Phase 6 authorization | Owner review of remaining open decisions |
 | 7 planning/gate | 6 and explicit Phase 7 authorization | Review of non-blocking decisions |
-| First business implementation | Owner answers, approved first-module spec, readiness PASS | Deferred auth decision |
-| 8 | First business implementation and approved transaction rules | Report query planning |
+| 7A Business Profile | Approved first-module spec and readiness PASS | Deferred auth decision |
+| 8 | 7A and approved transaction rules | Report query planning |
 | 9 | 8, approved accounting depth | Report queries |
 | 10 | 8, 9, approved report definitions | Dashboard polish |
 | 11 | First business implementation through 10 | Packaging dry runs |
@@ -355,9 +359,9 @@ Definition of done:
 
 ### Phase 7 — Owner decisions & first module specification
 
-**Status: planning complete (2026-11-18).** Report: `Reports/PHASE_07_REPORT.md`.
+**Status: planning complete (2026-11-18); approval gate passed 2026-11-20.** Report: `Reports/PHASE_07_REPORT.md`.
 
-**Implementation status: NOT READY.** Owner answers and explicit first-module approval are still pending.
+**Implementation status: READY for the minimal Business Profile slice only.** Other business modules remain blocked by their own decisions.
 
 Goal: resolve the business decisions that block implementation and prepare a draft owner-approved specification for the first business module. This is a documentation and approval-gate phase only.
 
@@ -381,13 +385,41 @@ Definition of done:
 - [x] Existing architecture, database, backup, and security decisions preserved.
 - [x] No code, migration, table, model, dependency, seed data, auth, or application behavior changed.
 - [x] No commit, amend, rebase, reset, clean, or push performed.
-- [ ] Owner answers recorded.
-- [ ] First-module specification explicitly approved.
-- [ ] Readiness re-check passed.
+- [x] First-module answers recorded by owner continuation instruction on 2026-11-20.
+- [x] First-module specification explicitly approved for the minimal slice.
+- [x] Readiness re-check passed for the minimal slice.
 
-**Recommended first module:** Business Settings — Business Profile only. This is a planning recommendation, not approval.
+**Approved first module:** Business Settings — Business Profile only.
 
-**Gate:** owner answers the worksheet, approves the first-module specification, and a readiness re-check records PASS. Work stops before any business implementation until this gate passes.
+**Gate passed:** business name mandatory; address, phone, email, website, registration number, and footer message optional; one profile per installation; single record with no history; no tax, attachments, print, audit UI, roles, customers, suppliers, catalogue, or transactions. All other decisions remain open.
+
+### Phase 7A — First business module: Business Profile
+
+**Status: implemented 2026-11-20; demo complete; owner acceptance still pending.**
+
+Goal: deliver one vertical slice for the approved business-profile fields without inventing unapproved business rules.
+
+Work:
+
+- Alembic revision adding the single-row `business_profile` table.
+- Framework-independent domain object, validation, and completion rules.
+- Application service owning the unit-of-work boundary and structured results.
+- SQLAlchemy repository with no business-validation responsibility.
+- QtCore-only ViewModel and a presentation-only Settings view.
+- Tests for domain rules, persistence, migration, UI states, and architecture boundaries.
+- Documentation and phase report updates.
+
+Definition of done:
+
+- [x] Profile can be created, loaded, edited, saved, and reloaded.
+- [x] Empty, incomplete, complete, validation-error, and save-failure states are covered.
+- [x] One profile only; no silent overwrite or sample data.
+- [x] No tax, logo/attachment, print, audit UI, roles, customers, suppliers, catalogue, transaction, or configuration changes are included.
+- [x] Existing Phase 1–7 tests remain green.
+- [x] Lint and architecture boundary checks pass.
+- [ ] Owner acceptance recorded in the phase report.
+
+**Gate:** approved module demo plus owner acceptance before any master-data or transaction module.
 
 ### Historical/deferred — Authentication and users (conditional; formerly listed as Phase 6)
 
@@ -682,19 +714,16 @@ A deliverable is done only when:
 
 ## 10. Immediate next step
 
-Phases 1–6 are complete, and Phase 7 planning/approval-gate documentation is
-complete (2026-11-18). Reports are in `Reports/PHASE_01_REPORT.md` through
-`Reports/PHASE_07_REPORT.md`. The owner confirmed INR and the Indian fiscal year;
-the affected documentation was reconciled during earlier phases.
+Phases 1–6, the Phase 7 approval gate, and Phase 7A Business Profile are complete
+(2026-11-20). Reports are in `Reports/PHASE_01_REPORT.md` through
+`Reports/PHASE_07A_REPORT.md`. The owner confirmed INR and the Indian fiscal year;
+the 2026-11-20 continuation instruction approved only the minimal Business Profile
+slice. The affected documentation was reconciled during those phases.
 
-Review `docs/PHASE_07_OWNER_DECISION_WORKSHEET.md`,
-`docs/PHASE_07_FIRST_MODULE_SPECIFICATION.md`,
-`docs/PHASE_07_IMPLEMENTATION_READINESS.md`, and `Reports/PHASE_07_REPORT.md`.
-Answer every decision or mark "Not decided yet", then explicitly approve or
-correct the recommended first module specification. Implementation readiness is
-NOT READY until those answers are recorded and a readiness re-check passes. Do
-not start master data, transactions, authentication, or any other business
-implementation without that authorization.
+Review `Reports/PHASE_07A_REPORT.md` for acceptance. Do not start master data,
+transactions, authentication, tax details, attachments, reports, or any other
+business module without a new explicit owner decision in
+`docs/OPEN_DECISIONS.md`.
 
 Phase 5 preserved the Phase 4 data-protection guarantees (verified backups, safe
 restore/relocation, scheduling/catch-up, and the pre-upgrade safety-backup gate).

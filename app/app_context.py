@@ -23,6 +23,7 @@ from app.infrastructure.database.config import DatabaseConfig
 from app.infrastructure.database.engine import Database
 from app.infrastructure.database.migrations import verify_database_for_startup
 from app.services.backup_workspace import BackupWorkspace, BackupWorkspaceFactory
+from app.services.business_profile_service import BusinessProfileServiceFactory
 from app.services.database_runtime import DatabaseRuntime
 
 logger = logging.getLogger(__name__)
@@ -42,12 +43,18 @@ class AppContext:
     config_service: ConfigService
     runtime: DatabaseRuntime = field(default_factory=DatabaseRuntime)
     workspace_factory: BackupWorkspaceFactory = field(init=False)
+    business_profile_factory: BusinessProfileServiceFactory = field(init=False)
 
     def __post_init__(self) -> None:
         object.__setattr__(
             self,
             "workspace_factory",
             BackupWorkspaceFactory(self.config_service, self.runtime),
+        )
+        object.__setattr__(
+            self,
+            "business_profile_factory",
+            BusinessProfileServiceFactory(self.config_service, self.runtime),
         )
 
     @classmethod

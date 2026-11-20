@@ -6,6 +6,7 @@ do not open real windows.
 
 from __future__ import annotations
 
+import base64
 import logging
 import os
 from pathlib import Path
@@ -20,6 +21,10 @@ from app.core.logging_config import HANDLER_MARKER
 from app.infrastructure.database.config import DatabaseConfig
 from app.infrastructure.database.engine import Database
 from app.infrastructure.database.migrations import MigrationManager
+
+PNG_LOGO_BYTES = base64.b64decode(
+    "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAADElEQVR4nGP4z8AAAAMBAQDJ/pLvAAAAAElFTkSuQmCC"
+)
 
 
 @pytest.fixture(scope="session")
@@ -62,6 +67,22 @@ def config_service(tmp_path) -> ConfigService:
 @pytest.fixture
 def default_config() -> AppConfig:
     return AppConfig()
+
+
+@pytest.fixture
+def logo_file(tmp_path) -> Path:
+    """A small, content-valid PNG logo for profile tests."""
+    path = tmp_path / "logo.png"
+    path.write_bytes(PNG_LOGO_BYTES)
+    return path
+
+
+@pytest.fixture
+def profile_data_root(initialized_database: Database) -> Path:
+    """The configured data root for the temporary database, with Logos present."""
+    root = initialized_database.config.path.parent
+    (root / "Logos").mkdir(parents=True, exist_ok=True)
+    return root
 
 
 @pytest.fixture

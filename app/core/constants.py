@@ -47,6 +47,7 @@ DATA_BACKUPS_AUTOMATIC_DIR = "Automatic"
 DATA_BACKUPS_MANUAL_DIR = "Manual"
 DATA_BACKUPS_SAFETY_DIR = "Safety"
 DATA_ATTACHMENTS_DIR = "Attachments"
+DATA_LOGOS_DIR = "Logos"
 DATA_EXPORTS_DIR = "Exports"
 DATA_EXPORTS_PDF_DIR = "PDF"
 DATA_EXPORTS_EXCEL_DIR = "Excel"
@@ -84,6 +85,8 @@ BACKUP_FREE_SPACE_RESERVE_BYTES = 50 * 1024 * 1024
 
 # Restore and relocation artifacts (same volume as the live database).
 RESTORE_STAGING_FILENAME = ".restore-staging.db"
+RESTORE_ASSETS_STAGING_DIR = ".restore-assets-staging"
+RESTORE_ASSETS_ROLLBACK_DIR = "assets-rollback"
 RESTORE_MARKER_FILENAME = ".restore-in-progress.json"
 RELOCATION_MARKER_FILENAME = ".relocation-in-progress.json"
 RECOVERY_REQUIRED_MARKER_FILENAME = ".recovery-required.json"

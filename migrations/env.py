@@ -16,6 +16,15 @@ from alembic import context
 from sqlalchemy import engine_from_config, pool
 
 from app.infrastructure.database.base import Base
+from app.infrastructure.database.models import (
+    AuditEventRecord,
+    BusinessProfileRecord,
+    BusinessProfileVersionRecord,
+)
+
+assert BusinessProfileRecord.__tablename__ == "business_profile"
+assert BusinessProfileVersionRecord.__tablename__ == "business_profile_versions"
+assert AuditEventRecord.__tablename__ == "audit_events"
 
 config = context.config
 

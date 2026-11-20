@@ -136,6 +136,7 @@ class BackupWorkspaceFactory:
             state_store=state_store,
             app_version=self._app_version,
             clock=self._clock,
+            managed_asset_dirs=(layout.logos_dir,),
         )
         retention_service = RetentionService(
             directories=directories,

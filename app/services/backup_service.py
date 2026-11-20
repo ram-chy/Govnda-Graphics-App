@@ -12,6 +12,7 @@ that case and must not be used by ordinary callers.
 
 from __future__ import annotations
 
+import hashlib
 import logging
 import os
 import shutil
@@ -23,6 +24,7 @@ from pathlib import Path
 from app.core import constants
 from app.core.exceptions import BackupError, BackupVerificationError
 from app.domain.backup import BackupRecord, BackupStatus, BackupType
+from app.domain.backup_assets import ManagedBackupAsset
 from app.infrastructure.backup.directories import BackupDirectories
 from app.infrastructure.backup.hashing import sha256_file
 from app.infrastructure.backup.lock import OperationLock
@@ -79,6 +81,7 @@ class BackupService:
         verifier: Callable[[Path], DatabaseVerification] = verify_database_file,
         source_verifier: Callable[[Path], DatabaseVerification] | None = None,
         hasher: Callable[[Path], str] = sha256_file,
+        managed_asset_dirs: tuple[Path, ...] = (),
     ) -> None:
         self._directories = directories
         self._database_path = Path(database_path)
@@ -93,6 +96,7 @@ class BackupService:
             lambda path: verify_database_file(path, full=False)
         )
         self._hasher = hasher
+        self._managed_asset_dirs = tuple(Path(path) for path in managed_asset_dirs)
 
     @property
     def directories(self) -> BackupDirectories:
@@ -158,7 +162,9 @@ class BackupService:
                     ),
                 )
 
-            self._require_free_space(destination_dir, source.size_bytes)
+            managed_assets = self._collect_managed_assets()
+            asset_bytes = sum(asset.size_bytes for asset in managed_assets)
+            self._require_free_space(destination_dir, source.size_bytes + asset_bytes)
             clean_stale_temporary_files(destination_dir)
 
             created_local = started.astimezone()
@@ -223,6 +229,7 @@ class BackupService:
                 duration_ms=int((self._clock() - started).total_seconds() * 1000),
                 trigger=trigger,
                 created_at_local=created_local.isoformat(),
+                managed_assets=managed_assets,
             )
 
             self._report(progress, 95, "Publishing the verified backup")
@@ -282,6 +289,44 @@ class BackupService:
             self._state.write_last_error(message, when=started)
             logger.error("Backup failed: %s", exc, exc_info=True)
             raise
+
+    def _collect_managed_assets(self) -> tuple[ManagedBackupAsset, ...]:
+        assets: list[ManagedBackupAsset] = []
+        for root in self._managed_asset_dirs:
+            if not root.exists():
+                continue
+            if not root.is_dir():
+                raise BackupError(
+                    f"managed asset path is not a folder: {root}",
+                    user_message=(
+                        "A managed profile-file path is damaged, so no backup was created."
+                    ),
+                )
+            try:
+                files = sorted(
+                    path
+                    for path in root.rglob("*")
+                    if path.is_file() and not path.name.startswith(".")
+                )
+                for path in files:
+                    content = path.read_bytes()
+                    relative = f"{root.name}/{path.relative_to(root).as_posix()}"
+                    assets.append(
+                        ManagedBackupAsset(
+                            relative_path=relative,
+                            size_bytes=len(content),
+                            sha256=hashlib.sha256(content).hexdigest(),
+                            content=content,
+                        )
+                    )
+            except OSError as exc:
+                raise BackupError(
+                    f"managed assets could not be read: {root}: {exc}",
+                    user_message=(
+                        "The managed profile files could not be read. No backup was created."
+                    ),
+                ) from exc
+        return tuple(assets)
 
     def _validate_source(self) -> DatabaseVerification:
         source = self._database_path

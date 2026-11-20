@@ -15,11 +15,14 @@ from app.infrastructure.database.engine import Database
 from app.infrastructure.database.migrations import (
     MigrationManager,
     MigrationState,
+    application_head_revision,
     default_migrations_dir,
     evaluate_migration_state,
     read_application_id,
     verify_database_for_startup,
 )
+
+HEAD_REVISION = application_head_revision()
 
 
 def _pragma(database: Database, statement: str) -> object:
@@ -65,6 +68,8 @@ def test_default_migrations_directory_contains_the_baseline() -> None:
 
     assert directory.is_dir()
     assert (directory / "versions" / "0001_baseline.py").is_file()
+    assert (directory / "versions" / "0002_business_profile.py").is_file()
+    assert (directory / "versions" / "0003_business_profile_requirements.py").is_file()
 
 
 def test_create_database_applies_the_baseline_identity(
@@ -75,25 +80,37 @@ def test_create_database_applies_the_baseline_identity(
     assert int(_pragma(initialized_database, "PRAGMA application_id") or 0) == 0x47424753
 
 
-def test_baseline_creates_no_application_tables(initialized_database: Database) -> None:
-    assert _table_names(initialized_database) == {"alembic_version"}
+def test_migrations_create_the_business_profile_table(initialized_database: Database) -> None:
+    assert _table_names(initialized_database) == {
+        "alembic_version",
+        "business_profile",
+        "business_profile_versions",
+        "audit_events",
+    }
 
 
 def test_status_reports_up_to_date(initialized_database: Database) -> None:
     status = MigrationManager(initialized_database).status()
 
     assert status.state is MigrationState.UP_TO_DATE
-    assert status.current_revision == "0001_baseline"
-    assert status.head_revision == "0001_baseline"
+    assert status.current_revision == HEAD_REVISION
+    assert status.head_revision == HEAD_REVISION
     assert status.pending_revisions == ()
     assert status.is_up_to_date
 
 
-def test_history_lists_the_baseline(initialized_database: Database) -> None:
+def test_history_lists_the_approved_revisions(initialized_database: Database) -> None:
     entries = MigrationManager(initialized_database).history()
+    revisions = {entry.revision: entry.down_revision for entry in entries}
 
-    assert [entry.revision for entry in entries] == ["0001_baseline"]
-    assert entries[0].down_revision is None
+    assert set(revisions) == {
+        "0001_baseline",
+        "0002_business_profile",
+        "0003_business_profile_requirements",
+    }
+    assert revisions["0001_baseline"] is None
+    assert revisions["0002_business_profile"] == "0001_baseline"
+    assert revisions["0003_business_profile_requirements"] == "0002_business_profile"
 
 
 def test_create_database_refuses_an_existing_file(database_config: DatabaseConfig) -> None:
@@ -140,7 +157,7 @@ def test_upgrade_from_an_uninitialized_file_applies_the_baseline(
         status = manager.upgrade()
 
         assert status.is_up_to_date
-        assert status.current_revision == "0001_baseline"
+        assert status.current_revision == HEAD_REVISION
         assert read_application_id(database) == APPLICATION_ID
     finally:
         database.shutdown()
@@ -158,7 +175,7 @@ def test_failed_upgrade_leaves_the_database_unchanged(
 
     after = manager.status()
     assert after == before
-    assert after.current_revision == "0001_baseline"
+    assert after.current_revision == HEAD_REVISION
     assert read_application_id(initialized_database) == application_id
 
 
@@ -232,11 +249,11 @@ def test_wrong_application_id_is_refused_at_startup(database_config: DatabaseCon
         database.shutdown()
 
 
-def test_startup_verification_accepts_the_baseline(initialized_database: Database) -> None:
+def test_startup_verification_accepts_the_current_schema(initialized_database: Database) -> None:
     status = verify_database_for_startup(initialized_database)
 
     assert status.is_up_to_date
-    assert status.current_revision == "0001_baseline"
+    assert status.current_revision == HEAD_REVISION
 
 
 def test_startup_verification_does_not_upgrade(initialized_database: Database) -> None:

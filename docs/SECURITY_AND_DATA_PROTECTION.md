@@ -3,10 +3,16 @@
 | Field | Value |
 | --- | --- |
 | Document | SECURITY_AND_DATA_PROTECTION.md |
-| Version | 1.2 |
-| Date | 2026-11-14 |
-| Status | Draft for review — Phase 3 setup and location controls implemented |
+| Version | 1.3 |
+| Date | 2026-11-14; Phase 7B controls added 2026-11-20 |
+| Status | Phase 3 setup/location, Phase 4 backup/restore, and Phase 7B profile/logo controls implemented |
 | Related | ARCHITECTURE.md, BACKUP_STRATEGY.md, DATABASE_SCHEMA.md |
+
+## Phase 7B protection controls (authoritative)
+
+Protected business data now includes `<data_root>\Logos\`, `business_profile_versions`, and `audit_events`. Profile logo files use generated names, PNG/JPG/JPEG content validation, a 5 MB limit, and safe `Logos/...` relative references; absolute paths and `..` traversal are rejected.
+
+Profile audit events are durable, retained indefinitely in this slice, written with actor `system/unauthenticated`, enforced immutable by database triggers, and have no ordinary UI. Backups can embed logo bytes in sidecar `managed_assets` with SHA-256 verification; restore and relocation preserve logo assets and roll back on failure. General attachments remain governed by the still-open Q-24 decision and are not part of this profile slice.
 
 ## 1. Scope and honesty about limits
 

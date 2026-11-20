@@ -21,6 +21,7 @@ from PySide6.QtWidgets import (
 from app.core import constants
 from app.core.config import ConfigService
 from app.services.backup_workspace import BackupWorkspaceFactory
+from app.services.business_profile_service import BusinessProfileServiceFactory
 from app.services.database_runtime import DatabaseRuntime
 from app.ui.components.placeholder_view import PlaceholderView
 from app.ui.components.sidebar import NavGroup, NavItem, Sidebar
@@ -29,8 +30,10 @@ from app.ui.formatting import format_backup_time
 from app.ui.themes.manager import ThemeManager
 from app.ui.themes.tokens import METRICS
 from app.ui.viewmodels.backup_viewmodel import BackupSnapshot, BackupViewModel
+from app.ui.viewmodels.business_profile_viewmodel import BusinessProfileViewModel
 from app.ui.viewmodels.shell_viewmodel import ShellViewModel
 from app.ui.views.backup_view import BackupView
+from app.ui.views.business_profile_view import BusinessProfileView
 from app.ui.views.home_view import HomeView
 
 logger = logging.getLogger(__name__)
@@ -68,7 +71,7 @@ NAVIGATION_GROUPS: tuple[NavGroup, ...] = (
     NavGroup(
         title="System",
         items=(
-            NavItem("settings", "Settings", "Business profile and preferences - Phase 7"),
+            NavItem("settings", "Settings", "Business profile and application preferences"),
             NavItem("backup", "Backup", "Backup, restore and schedule - Phase 4"),
         ),
     ),
@@ -93,6 +96,7 @@ class MainWindow(QMainWindow):
         config_service: ConfigService | None = None,
         database_runtime: DatabaseRuntime | None = None,
         workspace_factory: BackupWorkspaceFactory | None = None,
+        business_profile_factory: BusinessProfileServiceFactory | None = None,
         settings: QSettings | None = None,
         parent: QWidget | None = None,
     ) -> None:
@@ -109,6 +113,12 @@ class MainWindow(QMainWindow):
         self._current_key = ""
         self._backup_viewmodel: BackupViewModel | None = None
         self._backup_status: QLabel | None = None
+        self._business_profile_viewmodel: BusinessProfileViewModel | None = None
+        if business_profile_factory is not None:
+            self._business_profile_viewmodel = BusinessProfileViewModel(
+                business_profile_factory, parent=self
+            )
+            self._business_profile_viewmodel.status_message.connect(self._show_status_message)
         if (
             config_service is not None
             and database_runtime is not None
@@ -342,6 +352,8 @@ class MainWindow(QMainWindow):
             return self._build_home_view()
         if key == "backup" and self._backup_viewmodel is not None:
             return BackupView(self._backup_viewmodel, self)
+        if key == "settings" and self._business_profile_viewmodel is not None:
+            return BusinessProfileView(self._business_profile_viewmodel, self)
         return PlaceholderView(item.label, item.subtitle, self)
 
     def _build_home_view(self) -> HomeView:
@@ -362,6 +374,7 @@ class MainWindow(QMainWindow):
             f"Database location: {database_path}", constants.DATABASE_MESSAGE_TIMEOUT_MS
         )
         self._replace_dashboard()
+        self._replace_business_profile()
 
     def _replace_dashboard(self) -> None:
         previous = self._views.get("dashboard")
@@ -372,6 +385,21 @@ class MainWindow(QMainWindow):
         previous.deleteLater()
         replacement = self._build_home_view()
         self._views["dashboard"] = replacement
+        self._stack.addWidget(replacement)
+        if was_current:
+            self._stack.setCurrentWidget(replacement)
+
+    def _replace_business_profile(self) -> None:
+        if self._business_profile_viewmodel is None:
+            return
+        previous = self._views.get("settings")
+        if previous is None or not isinstance(previous, BusinessProfileView):
+            return
+        was_current = self._stack.currentWidget() is previous
+        self._stack.removeWidget(previous)
+        previous.deleteLater()
+        replacement = BusinessProfileView(self._business_profile_viewmodel, self)
+        self._views["settings"] = replacement
         self._stack.addWidget(replacement)
         if was_current:
             self._stack.setCurrentWidget(replacement)
