@@ -3,9 +3,9 @@
 | Field | Value |
 | --- | --- |
 | Document | PHASE_07_FIRST_MODULE_SPECIFICATION.md |
-| Version | 1.1 |
-| Date | 2026-11-18; corrected by Phase 7B on 2026-11-20 |
-| Status | Approved for implementation as corrected by Phase 7B |
+| Version | 1.2 |
+| Date | 2026-11-18; corrected by Phase 7B on 2026-11-20; audit retention corrected by Phase 7B-1 on 2026-11-21 |
+| Status | Approved for implementation as corrected by Phase 7B and Phase 7B-1 |
 | Recommended first module | Business Settings — Business Profile only |
 | Source | Phase 6 proposed order, architecture/database constraints, and Phase 7B owner correction |
 | Related | PHASE_07_OWNER_DECISION_WORKSHEET.md, PHASE_07_IMPLEMENTATION_READINESS.md, OPEN_DECISIONS.md, ARCHITECTURE.md, DATABASE_SCHEMA.md |
@@ -14,7 +14,7 @@
 
 This specification is now read with the owner-approved `Prompt/PHASE 7B — BUSINESS PROFILE CORRECTION & REQUIREMENTS ALIGNMENT.md`. The minimal text-only/no-history/no-logo/no-audit wording below is historical and superseded for the Business Profile slice.
 
-The corrected scope requires `business_name`, `address`, `phone`, `email`, `footer_message`, and `logo`. `secondary_phone`, `website`, and `registration_number` are optional. Logo files must be PNG/JPG/JPEG, at most 5 MB, content-validated, and stored by safe relative reference under `Logos/`. Each meaningful save creates an immutable version snapshot in `business_profile_versions`. Durable audit events are written to `audit_events` with actor `system/unauthenticated`; no ordinary audit UI is provided. Migration `0003_business_profile_requirements`, managed backup assets, and asset-preserving restore/relocation are part of the corrected slice.
+The corrected scope requires `business_name`, `address`, `phone`, `email`, `footer_message`, and `logo`. `secondary_phone`, `website`, and `registration_number` are optional. Logo files must be PNG/JPG/JPEG, at most 5 MB, content-validated, and stored by safe relative reference under `Logos/`. Each meaningful save creates an immutable version snapshot in `business_profile_versions`. Durable audit events are written to `audit_events` with actor `system/unauthenticated`; no ordinary audit UI is provided. Phase 7B-1 confirms that audit history is append-only and retained indefinitely, with no cleanup or retention configuration, and that restore and migration paths must preserve it. Migration `0003_business_profile_requirements`, managed backup assets, and asset-preserving restore/relocation are part of the corrected slice.
 
 ## 0. Approval record
 
@@ -82,7 +82,7 @@ The first slice stores information only. It does not generate business documents
 - Print/PDF/Excel output (`Q-17`, `AQ-06`).
 - Logos/images or attachment storage unless `Q-24` is explicitly approved.
 - User accounts, login, roles, permissions, approvals, or idle lock (`Q-04`, `AQ-05`, `B6-10`, `SQ-01`).
-- Audit history UI or retention implementation (`Q-22`).
+- General-purpose audit history UI and future event visibility rules (`Q-22`). Indefinite audit retention is implemented by Phase 7B-1 and is not out of scope.
 - Importing data (`Q-16`, `B6-08`).
 - Backup, restore, relocation, migration, or database-infrastructure changes.
 - Sample or seed business data.

@@ -29,6 +29,7 @@ class BusinessProfileRecord(Base):
 
 class BusinessProfileVersionRecord(Base):
     __tablename__ = "business_profile_versions"
+    IMMUTABLE = True
     __table_args__ = (
         CheckConstraint("profile_id = 1", name="single_profile_versions"),
         CheckConstraint("version_number > 0", name="positive_version"),
@@ -55,6 +56,7 @@ class BusinessProfileVersionRecord(Base):
 
 class AuditEventRecord(Base):
     __tablename__ = "audit_events"
+    IMMUTABLE = True
 
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
     event_type: Mapped[str] = mapped_column(String(100), nullable=False)

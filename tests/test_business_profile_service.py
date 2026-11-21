@@ -11,7 +11,7 @@ from sqlalchemy import text
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 
 from app.core.config import AppConfig
-from app.domain.audit import UNAUTHENTICATED_ACTOR
+from app.domain.audit import PROFILE_ENTITY_TYPE, UNAUTHENTICATED_ACTOR, ProfileAuditEventType
 from app.domain.business_profile import BusinessProfile, ProfileStatus
 from app.infrastructure.database.business_profile_repository import BusinessProfileRepository
 from app.infrastructure.database.engine import Database
@@ -141,6 +141,26 @@ def test_invalid_save_does_not_persist_anything(
         "logo": "A business logo is required.",
     }
     assert _counts(initialized_database) == (0, 0, 0)
+    assert service.audit_events() == ()
+
+
+def test_history_view_records_an_audit_event(
+    initialized_database: Database, profile_data_root: Path, logo_file: Path
+) -> None:
+    service = _service(initialized_database, profile_data_root)
+    assert service.save(_complete_profile(), logo_path=logo_file).success
+    before = len(service.audit_events())
+
+    service.record_history_viewed(1)
+
+    events = service.audit_events()
+    assert len(events) == before + 1
+    event = events[-1]
+    assert event.event_type == ProfileAuditEventType.HISTORY_VIEWED
+    assert event.entity_type == PROFILE_ENTITY_TYPE
+    assert event.entity_id == "1"
+    assert event.actor == UNAUTHENTICATED_ACTOR
+    assert event.payload == '{"version":1}'
 
 
 def test_invalid_logo_preserves_the_current_logo_reference(
@@ -210,6 +230,7 @@ def test_storage_failure_rolls_back_and_reports_a_reference(
     assert reloaded.profile == original
     assert set((profile_data_root / "Logos").iterdir()) == logo_files_before
     assert len(service.history()) == 1
+    assert len(service.audit_events()) == 2
 
 
 def test_immutable_version_rows_reject_update_and_delete(initialized_database: Database) -> None:

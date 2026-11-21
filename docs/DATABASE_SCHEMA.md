@@ -3,8 +3,8 @@
 | Field | Value |
 | --- | --- |
 | Document | DATABASE_SCHEMA.md |
-| Version | 1.4 |
-| Date | 2026-11-20 |
+| Version | 1.5 |
+| Date | 2026-11-20; Phase 7B-1 audit retention corrected 2026-11-21 |
 | Status | Phase 7B implemented — profile, version, and audit tables; all other business tables remain proposed |
 | Related | BLUEPRINT.md, ARCHITECTURE.md, BACKUP_STRATEGY.md |
 | Schema baseline | `0001_baseline`, `0002_business_profile`, and implemented `0003_business_profile_requirements` |
@@ -15,7 +15,9 @@
 
 Migration `0003_business_profile_requirements` adds `secondary_phone`, `logo_reference`, and `version_number` to `business_profile`, creates `business_profile_versions` and `audit_events`, adds immutability triggers, and backfills the existing active profile with version 1 and one audit event without changing its values. The application head is `0003_business_profile_requirements`.
 
-`logo_reference` stores a safe relative reference under `Logos/`, never an absolute path. Version rows retain mandatory/optional field values and the effective logo reference. Audit rows use actor `system/unauthenticated`, retain payloads indefinitely in this slice, and have no ordinary UI. Backup sidecars use optional `managed_assets` entries for logo bytes with size and SHA-256 verification. Historical Phase 7A statements saying no history, logo path, or audit table existed are superseded for this slice.
+`logo_reference` stores a safe relative reference under `Logos/`, never an absolute path. Version rows retain mandatory/optional field values and the effective logo reference. The implemented `audit_events` table stores `id`, `event_type`, `entity_type`, `entity_id`, `actor`, `created_at`, and `payload`. It has no foreign keys, no expiry or retention column, and no cascade path. Audit rows use actor `system/unauthenticated`, are retained indefinitely under the owner-approved Phase 7B-1 policy, and have no ordinary UI.
+
+Append-only behavior is enforced at three layers: `AuditEventRepository` exposes only `add()`/`list()`; immutable ORM records are rejected on update/delete before flush; and `BEFORE UPDATE`/`BEFORE DELETE` SQLite triggers abort direct SQL changes. There is no automatic audit cleanup, scheduled purge, or retention-based row deletion. Verified restore checks audit structure and appends any audit events written after the selected backup before replacing the live file, so history is neither omitted nor renumbered. `MigrationManager.downgrade()` refuses any downgrade that would drop the audit table while audit rows exist. Backup sidecars use optional `managed_assets` entries for logo bytes with size and SHA-256 verification. Historical Phase 7A statements saying no history, logo path, or audit table existed are superseded for this slice.
 
 ## 1. Design principles
 
@@ -268,7 +270,7 @@ A single-row constraint is enforced with `CHECK (id = 1)` plus service-level val
 
 - Append-only: no UPDATE/DELETE from application code.
 - Indexes: `(occurred_at)`, `(entity_type, entity_id)`, `(actor_user_id, occurred_at)`.
-- Retention: indefinite by default (Q-22).
+- Retention: indefinite (owner-approved in Phase 7B-1; general audit visibility remains open under Q-22).
 
 ### 7.4 `customers` (suppliers mirror the same shape)
 

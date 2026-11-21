@@ -3,16 +3,16 @@
 | Field | Value |
 | --- | --- |
 | Document | SECURITY_AND_DATA_PROTECTION.md |
-| Version | 1.3 |
-| Date | 2026-11-14; Phase 7B controls added 2026-11-20 |
-| Status | Phase 3 setup/location, Phase 4 backup/restore, and Phase 7B profile/logo controls implemented |
+| Version | 1.4 |
+| Date | 2026-11-14; Phase 7B controls added 2026-11-20; Phase 7B-1 audit retention corrected 2026-11-21 |
+| Status | Phase 3 setup/location, Phase 4 backup/restore, Phase 7B profile/logo, and Phase 7B-1 audit-retention controls implemented |
 | Related | ARCHITECTURE.md, BACKUP_STRATEGY.md, DATABASE_SCHEMA.md |
 
 ## Phase 7B protection controls (authoritative)
 
 Protected business data now includes `<data_root>\Logos\`, `business_profile_versions`, and `audit_events`. Profile logo files use generated names, PNG/JPG/JPEG content validation, a 5 MB limit, and safe `Logos/...` relative references; absolute paths and `..` traversal are rejected.
 
-Profile audit events are durable, retained indefinitely in this slice, written with actor `system/unauthenticated`, enforced immutable by database triggers, and have no ordinary UI. Backups can embed logo bytes in sidecar `managed_assets` with SHA-256 verification; restore and relocation preserve logo assets and roll back on failure. General attachments remain governed by the still-open Q-24 decision and are not part of this profile slice.
+Profile audit events are durable, retained indefinitely, written with actor `system/unauthenticated`, enforced append-only by database triggers and ORM guards, and have no ordinary UI. There is no audit expiry timestamp, retention period, scheduled purge, cleanup job, or ordinary operation that deletes audit history. Backups can embed logo bytes in sidecar `managed_assets` with SHA-256 verification; restore and relocation preserve logo assets and roll back on failure. Restore also carries forward audit events written after the selected backup so no history is silently omitted. A schema downgrade that would remove the audit table is refused while audit rows exist. General attachments remain governed by the still-open Q-24 decision and are not part of this profile slice.
 
 ## 1. Scope and honesty about limits
 
@@ -212,9 +212,11 @@ Rules:
 - Audit writes share the business transaction when the action affects data.
 - No passwords, full personal data, or full document payloads in audit details.
 - The UI can view audit history for a record (permission permitting).
-- Append-only in the application; there is no edit/delete path.
+- Append-only in the application and database; there is no edit/delete path. ORM guards reject updates/deletes of immutable records, and SQLite triggers abort any direct UPDATE or DELETE.
+- Audit history is retained indefinitely in accordance with the owner-approved Phase 7B-1 policy. No retention period is configurable and no scheduled cleanup touches audit rows. Backup-file retention manages backup files only and never deletes audit records from the live database.
+- Restore verifies audit-table structure and copies missing audit events into the staged database before replacement; a failed restore rolls back to the pre-restore database and its audit history.
+- A downgrade that would drop `audit_events` is refused while any audit row exists.
 - Local administrators can modify the file; this is a limitation, not a guarantee. For higher assurance, export audit summaries to an external location periodically.
-- Retention is indefinite by default (Q-22); pruning, if ever added, requires an explicit policy.
 
 ## 11. Logging and diagnostics
 

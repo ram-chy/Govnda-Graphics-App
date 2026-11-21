@@ -24,7 +24,7 @@ The implementation is intentionally small and confined to profile fields, logo s
 | Managed logo | PNG/JPG/JPEG only, at most 5 MB, signature/content validation, generated filename, safe `Logos/...` relative reference. |
 | Logo failure safety | The current profile is preserved when validation, storage, save, versioning, or audit fails; only a newly stored logo is discarded. |
 | History | `business_profile_versions` stores immutable snapshots and version numbers; the Settings view can select a prior version for viewing without changing the active profile. |
-| Audit | `audit_events` durably records profile saves and history views with actor `system/unauthenticated`; no ordinary audit UI was added. |
+| Audit | `audit_events` durably records profile saves and history views with actor `system/unauthenticated`; no ordinary audit UI was added. Indefinite retention and append-only enforcement were confirmed and corrected by Phase 7B-1. |
 | Current profile identity | The profile view shows current/draft status, completion state, version, and validation messages. |
 | Backup | Sidecars may include `managed_assets` with `relative_path`, `size_bytes`, `sha256`, and base64 `content`; sidecars without assets remain compatible. |
 | Restore | Managed assets are validated and staged, the database is verified, `Logos/` is replaced, and any failure rolls back database and assets. |
@@ -90,5 +90,5 @@ Targeted asset verification also passed during remediation:
 ## 7. Outstanding
 
 - Owner demo/acceptance is still pending.
-- General attachment rules, audit retention/visibility policy, print/document rules, roles, customers, suppliers, catalogue, and transactions remain outside this slice and unchanged by this report.
+- General attachment rules, print/document rules, roles, customers, suppliers, catalogue, and transactions remain outside this slice and unchanged by this report. Audit retention was corrected by Phase 7B-1 (`Reports/PHASE_07B_1_REPORT.md`); general audit visibility remains outside this slice.
 - Manual Windows integration drills for backup/restore/relocation were not executed in this session; automated coverage was executed and passed.

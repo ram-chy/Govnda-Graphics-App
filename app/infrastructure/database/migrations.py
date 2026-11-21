@@ -35,6 +35,7 @@ from app.infrastructure.database.engine import Database
 logger = logging.getLogger(__name__)
 
 _MIGRATIONS_ENV_VAR = "GOBINDAS_MIGRATIONS_DIR"
+_AUDIT_EVENT_REVISION = "0003_business_profile_requirements"
 
 
 class MigrationState(StrEnum):
@@ -233,8 +234,21 @@ class MigrationManager:
         return self.status()
 
     def downgrade(self, target: str) -> MigrationStatus:
-        """Downgrade an existing database to ``target`` (explicit request only)."""
+        """Downgrade an existing database to ``target`` (explicit request only).
+
+        A downgrade that would remove the audit-event table is refused while any
+        audit history exists. The approved retention policy is indefinite, so a
+        schema rollback must never silently erase those records.
+        """
         self._database.config.require_existing_file()
+        if self._removes_audit_events(target) and self._audit_event_count() > 0:
+            raise MigrationError(
+                f"downgrade to {target!r} would destroy audit history",
+                user_message=(
+                    "This schema downgrade would delete audit history, which is retained "
+                    "indefinitely. It was refused and the database was not changed."
+                ),
+            )
         try:
             with self._database.engine.begin() as connection:
                 self._config.attributes["connection"] = connection
@@ -250,6 +264,40 @@ class MigrationManager:
         finally:
             self._config.attributes.pop("connection", None)
         return self.status()
+
+    def _removes_audit_events(self, target: str) -> bool:
+        script = self._script()
+        if target == "base":
+            return True
+        try:
+            target_revision = script.get_revision(target)
+        except Exception:  # noqa: BLE001 - unknown targets are refused when audit rows exist
+            return True
+        lineage: list[str] = []
+        current: str | None = _AUDIT_EVENT_REVISION
+        while current is not None:
+            lineage.append(current)
+            revision = script.get_revision(current)
+            down_revision = revision.down_revision
+            if isinstance(down_revision, str):
+                current = down_revision
+            elif isinstance(down_revision, (tuple, list)):
+                current = str(down_revision[0]) if down_revision else None
+            else:
+                current = None
+        if target_revision.revision not in lineage:
+            return True
+        return lineage.index(target_revision.revision) > lineage.index(_AUDIT_EVENT_REVISION)
+
+    def _audit_event_count(self) -> int:
+        try:
+            with self._database.engine.connect() as connection:
+                value = connection.exec_driver_sql(
+                    "SELECT COUNT(*) FROM audit_events"
+                ).scalar_one()
+            return int(value)
+        except (SQLAlchemyError, OSError):
+            return 0
 
     def _run_upgrade(self, target: str) -> None:
         try:

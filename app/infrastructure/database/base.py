@@ -7,8 +7,10 @@ generate stable migration scripts.
 
 from __future__ import annotations
 
-from sqlalchemy import MetaData
-from sqlalchemy.orm import DeclarativeBase
+from sqlalchemy import MetaData, event
+from sqlalchemy.orm import DeclarativeBase, Session
+
+from app.core.exceptions import DomainRuleError
 
 # SQLite stores ``application_id`` in the database header. The value spells
 # "GBGS" in ASCII hex and identifies a Gobindas BMS database independently of
@@ -32,4 +34,18 @@ NAMING_CONVENTION = {
 class Base(DeclarativeBase):
     """Declarative base with deterministic constraint naming."""
 
+    IMMUTABLE = False
     metadata = MetaData(naming_convention=NAMING_CONVENTION)
+
+
+@event.listens_for(Session, "before_flush")
+def _reject_immutable_changes(
+    session: Session, flush_context: object, instances: object
+) -> None:
+    del flush_context, instances
+    for instance in (*session.dirty, *session.deleted):
+        if getattr(type(instance), "IMMUTABLE", False) is True:
+            raise DomainRuleError(
+                f"immutable records cannot be changed: {type(instance).__name__}",
+                user_message="Audit history is append-only and cannot be changed.",
+            )

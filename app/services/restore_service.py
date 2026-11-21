@@ -3,8 +3,9 @@
 Restore never copies a live database. It first creates a verified safety backup
 through the SQLite Online Backup API, closes every connection, prepares an
 independent rollback snapshot, stages the selected backup on the destination
-volume, and replaces the live file with an atomic rename. The reopened database
-must pass identity, schema, integrity, foreign-key, and write checks before the
+volume, carries forward audit events written since that backup, and replaces the
+live file with an atomic rename. The reopened database must pass identity,
+schema, integrity, foreign-key, audit-structure, and write checks before the
 operation reports success.
 
 If replacement or post-restore verification fails, the rollback snapshot is put
@@ -49,6 +50,11 @@ from app.infrastructure.backup.snapshot import (
     verify_database_file,
 )
 from app.infrastructure.backup.state import BackupStateStore
+from app.infrastructure.database.audit_history import (
+    AuditHistorySummary,
+    merge_audit_history,
+    verify_audit_structure,
+)
 from app.infrastructure.database.config import DatabaseConfig
 from app.infrastructure.database.engine import Database
 from app.infrastructure.database.health import DatabaseDiagnostics
@@ -79,6 +85,7 @@ class RestoreResult:
     verification: DatabaseVerification
     duration_ms: int
     managed_assets_restored: int = 0
+    audit_events_preserved: int = 0
 
 
 class RestoreService:
@@ -230,6 +237,8 @@ class RestoreService:
                     "application version or choose a compatible backup."
                 ),
             )
+        verify_audit_structure(path)
+
         if verification.application_id != metadata.application_id:
             raise RestoreError(
                 "backup identity changed after verification",
@@ -284,6 +293,7 @@ class RestoreService:
         assets_replaced = False
         safety: BackupResult | None = None
         reopened: Database | None = None
+        audit_summary = AuditHistorySummary(preserved=0, total=0)
         replacing = False
         closed = False
 
@@ -385,6 +395,36 @@ class RestoreService:
             marker.write(
                 OperationMarker(
                     operation=RESTORE_MARKER,
+                    phase="preserving-audit-history",
+                    started_at_utc=started,
+                    database_path=str(database_path),
+                    detail=candidate.record.file_name,
+                )
+            )
+            self._report(progress, 70, "Preserving audit history")
+            audit_summary = merge_audit_history(database_path, staging_path)
+            merged = self._verifier(staging_path)
+            if not merged.ok:
+                raise RestoreError(
+                    f"audit-preserved copy failed verification: {merged.failure_summary}",
+                    user_message=(
+                        "The restore copy failed verification after audit history was preserved. "
+                        "The current database was not replaced."
+                    ),
+                )
+            if merged.schema_revision != self._expected_schema_revision:
+                raise RestoreError(
+                    "audit-preserved copy has an unexpected schema revision",
+                    user_message=(
+                        "The restore copy changed schema revision after audit history was "
+                        "preserved. The current database was not replaced."
+                    ),
+                )
+            verify_audit_structure(staging_path)
+
+            marker.write(
+                OperationMarker(
+                    operation=RESTORE_MARKER,
                     phase="replacing-database",
                     started_at_utc=started,
                     database_path=str(database_path),
@@ -455,7 +495,9 @@ class RestoreService:
                 verification=reopened_verification,
                 duration_ms=elapsed,
                 managed_assets_restored=len(candidate.metadata.managed_assets),
+                audit_events_preserved=audit_summary.preserved,
             )
+
         except Exception as exc:
             if reopened is not None:
                 reopened.shutdown()

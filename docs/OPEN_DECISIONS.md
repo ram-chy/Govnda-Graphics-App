@@ -3,9 +3,9 @@
 | Field | Value |
 | --- | --- |
 | Document | OPEN_DECISIONS.md |
-| Version | 1.2 |
-| Date | 2026-11-18; Phase 7B correction recorded 2026-11-20 |
-| Status | Business Profile scope corrected by Phase 7B; all other decisions remain open |
+| Version | 1.3 |
+| Date | 2026-11-18; Phase 7B correction recorded 2026-11-20; Phase 7B-1 retention decision recorded 2026-11-21 |
+| Status | Business Profile scope corrected by Phase 7B; audit retention approved by Phase 7B-1; all other decisions remain open |
 | Scope | All decisions requiring owner confirmation before business implementation, plus resolved constraints and deferred technical decisions |
 | Related | BUSINESS_REQUIREMENTS.md, BUSINESS_WORKFLOWS.md, MODULE_SPECIFICATIONS.md, BUSINESS_RULES.md, REPORTING_REQUIREMENTS.md, DEVELOPMENT_ROADMAP.md, PHASE_07_OWNER_DECISION_WORKSHEET.md, PHASE_07_IMPLEMENTATION_READINESS.md |
 
@@ -13,7 +13,7 @@
 
 Phase 7B resolves the profile-specific parts of B6-09 and B6-11: one active profile plus immutable version history, with mandatory `business_name`, `address`, `phone`, `email`, `footer_message`, and `logo`, and optional `secondary_phone`, `website`, and `registration_number`. Profile logo rules are PNG/JPG/JPEG, at most 5 MB, content-validated, and stored under `Logos/` by safe relative reference.
 
-Durable profile audit events are implemented with actor `system/unauthenticated` and no ordinary audit UI. Audit retention/visibility policy and general attachment decisions remain open. Earlier entries saying business name alone was mandatory, history was excluded, or logo/audit were excluded are superseded for this slice only.
+Durable profile audit events are implemented with actor `system/unauthenticated` and no ordinary audit UI. Phase 7B-1 resolves the retention part of Q-22: audit history is retained indefinitely with no automatic cleanup; the general-purpose audit viewer, visibility rules, and future event scope remain open. General attachment decisions also remain open. Earlier entries saying business name alone was mandatory, history was excluded, or logo/audit were excluded are superseded for this slice only.
 
 ## 0. Decision handling rules
 
@@ -82,7 +82,7 @@ Durable profile audit events are implemented with actor `system/unauthenticated`
 | Q-19 / AQ-03 | Code-signing certificate | Installer SmartScreen warnings and trust | Default: no certificate; document SmartScreen handling | Purchase certificate and sign EXE/installer; affects packaging budget | Final packaging/release | [DEFERRED] |
 | Q-20 | Bengali/bilingual UI | Affects UI labels, report headers, document templates, and tests | Default: English only; provisional | English only, Bengali, bilingual; affects translation and export layout | UI, reports, document output | [OPEN] |
 | Q-21 | Off-site/second-device backup requirement | Disaster recovery expectation | Manual periodic copy recommended; no cloud requirement | Manual copy, external drive rotation, automatic second destination; no cloud in v1 | Backup UX, release guidance | [OPEN] |
-| Q-22 | Audit retention and visibility | Storage growth and accountability | Default: keep indefinitely, owner-visible; needs approval | Financial events only vs all events; retention period; who can view | Audit module, permissions | [OPEN] |
+| Q-22 | Audit visibility and future event scope | Accountability and who may see audit data | Retention is now approved as indefinite by Phase 7B-1; general viewer remains unimplemented | Financial events only vs all events; who can view; no retention period is allowed | Audit module, permissions | [OPEN — retention resolved, visibility open] |
 | Q-23 | Barcode scanning | Product/UI scope | Default: no | No scanning; manual code entry; scanner support; affects catalogue and sales UI | Catalogue/Sales enhancements | [DEFERRED] |
 | Q-24 | Attachment types and size limits | Storage/backup size and safety | Default: PDF/JPG/PNG, 10 MB each; provisional | No attachments; file links; stored copies; type/size policy; backup inclusion | Attachments, receipts, artwork/proofs | [OPEN] |
 | Q-25 | Automatic backups to second destination | Backup runner complexity and failure policy | Default: no; manual extra copy | Single destination; second local/external destination; affects failure semantics | Backup runner enhancements | [DEFERRED] |

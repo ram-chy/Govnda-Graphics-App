@@ -11,6 +11,8 @@ from typing import Any
 
 from sqlalchemy.orm import Session
 
+from app.core.exceptions import DomainRuleError
+
 
 class Repository[ModelT]:
     """Minimal typed repository for one mapped model."""
@@ -35,6 +37,11 @@ class Repository[ModelT]:
         return entity
 
     def delete(self, entity: ModelT) -> None:
+        if getattr(self._model, "IMMUTABLE", False) is True:
+            raise DomainRuleError(
+                f"immutable records cannot be deleted: {self._model.__name__}",
+                user_message="Audit history is append-only and cannot be deleted.",
+            )
         self._session.delete(entity)
 
 
