@@ -33,6 +33,7 @@ from PySide6.QtWidgets import (
 
 from app.core import constants
 from app.domain.backup import BackupRecord, BackupStatus
+from app.services.auth_services import AuthServices
 from app.ui.components.cards import SectionCard
 from app.ui.components.controls import DetailCard, make_button
 from app.ui.components.feedback import EmptyState, StatusBadge, show_toast
@@ -50,10 +51,17 @@ _HISTORY_COLUMNS = ("Type", "File", "Status", "Created", "Size", "Schema")
 class BackupView(QWidget):
     """Backup status, history, progress, and the safety-sensitive actions."""
 
-    def __init__(self, viewmodel: BackupViewModel, parent: QWidget | None = None) -> None:
+    def __init__(
+        self,
+        viewmodel: BackupViewModel,
+        parent: QWidget | None = None,
+        *,
+        auth_services: AuthServices | None = None,
+    ) -> None:
         super().__init__(parent)
         self.setObjectName("ContentArea")
         self._viewmodel = viewmodel
+        self._auth_services = auth_services
         self._snapshot: BackupSnapshot | None = None
         self._records: tuple[BackupRecord, ...] = ()
         self._busy = False
@@ -138,9 +146,7 @@ class BackupView(QWidget):
         header.addWidget(title)
         header.addStretch(1)
 
-        self._refresh_button = make_button(
-            "Refresh", content, variant="secondary", default=False
-        )
+        self._refresh_button = make_button("Refresh", content, variant="secondary", default=False)
         self._refresh_button.setToolTip("Re-read the backup history (F5)")
         self._refresh_button.clicked.connect(self._viewmodel.refresh)
         header.addWidget(self._refresh_button)
@@ -182,9 +188,7 @@ class BackupView(QWidget):
         schedule.add_widget(self._schedule_summary)
         schedule_actions = QHBoxLayout()
         schedule_actions.addStretch(1)
-        self._schedule_button = make_button(
-            "Schedule settings", content, variant="secondary"
-        )
+        self._schedule_button = make_button("Schedule settings", content, variant="secondary")
         self._schedule_button.clicked.connect(self._on_schedule_settings)
         schedule_actions.addWidget(self._schedule_button)
         schedule.content_layout.addLayout(schedule_actions)
@@ -237,9 +241,7 @@ class BackupView(QWidget):
             variant="danger",
             accessible_name="Restore the selected verified backup",
         )
-        self._restore_button.setToolTip(
-            "Replace the current database with a verified backup"
-        )
+        self._restore_button.setToolTip("Replace the current database with a verified backup")
         self._restore_button.clicked.connect(self._on_restore_selected)
         history_actions.addWidget(self._restore_button)
         history_actions.addStretch(1)
@@ -281,12 +283,20 @@ class BackupView(QWidget):
     def _update_action_state(self) -> None:
         busy = self._busy
         available = bool(self._snapshot and self._snapshot.available)
+        can_restore = self._can("backup.restore")
+        can_relocate = self._can("database.relocate")
+        can_settings = self._can("settings.application.update")
         self._backup_button.setEnabled(available and not busy)
-        self._schedule_button.setEnabled(available and not busy)
-        self._move_button.setEnabled(available and not busy)
+        self._schedule_button.setEnabled(available and not busy and can_settings)
+        self._move_button.setEnabled(available and not busy and can_relocate)
         self._restore_button.setEnabled(
-            available and not busy and self._selected_verified_record() is not None
+            available and not busy and can_restore and self._selected_verified_record() is not None
         )
+
+    def _can(self, permission: str) -> bool:
+        if self._auth_services is None:
+            return True
+        return self._auth_services.authorization.has_permission(permission)
 
     def _on_progress(self, percent: int, message: str) -> None:
         self._progress.setValue(max(0, min(100, percent)))
@@ -333,9 +343,7 @@ class BackupView(QWidget):
         self._locations["database"].setText(
             str(snapshot.database_path) if snapshot.database_path else "Not configured"
         )
-        backups_root = (
-            data_root / constants.DATA_BACKUPS_DIR if data_root is not None else None
-        )
+        backups_root = data_root / constants.DATA_BACKUPS_DIR if data_root is not None else None
         self._locations["backups"].setText(
             str(backups_root) if backups_root is not None else "Not configured"
         )
@@ -401,9 +409,7 @@ class BackupView(QWidget):
         selected = self._selected_record()
         selected_name = selected.file_name if selected is not None else None
         self._history.clear()
-        muted = QApplication.palette().color(
-            QPalette.ColorGroup.Disabled, QPalette.ColorRole.Text
-        )
+        muted = QApplication.palette().color(QPalette.ColorGroup.Disabled, QPalette.ColorRole.Text)
         for index, record in enumerate(records):
             item = QTreeWidgetItem(
                 [
@@ -418,8 +424,7 @@ class BackupView(QWidget):
             item.setData(0, Qt.ItemDataRole.UserRole, index)
             item.setToolTip(
                 0,
-                f"{record.backup_type.label}, {format_status(record.status)}, "
-                f"{record.file_name}",
+                f"{record.backup_type.label}, {format_status(record.status)}, {record.file_name}",
             )
             if record.detail:
                 item.setToolTip(1, record.detail)

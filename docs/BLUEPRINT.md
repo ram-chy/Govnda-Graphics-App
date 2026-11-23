@@ -347,7 +347,7 @@ Defaults are **not** decisions. Each must be answered before the affected module
 | Q-01 | Currency and decimal places? | INR, 2 decimals | Schema, formatting |
 | Q-02 | Multi-currency buying/selling? | No | Schema, calculations |
 | Q-03 | Tax/VAT: rates, inclusive or exclusive, per line or per invoice? | No tax in v1 | Sales, purchases, reports |
-| Q-04 | Single user or multiple users with login/roles? | Single user, no login | Phase 6, audit, schema |
+| Q-04 | Single user or multiple users with login/roles? | Resolved 2026-11-22: multiple local users with four roles | Phase 8B authentication, audit, schema |
 | Q-05 | Inventory valuation: FIFO, weighted average, or simple cost? | Weighted average (provisional) | Inventory, COGS, P&L |
 | Q-06 | Are negative stock levels allowed? | Block by default | Sales validation |
 | Q-07 | Which services/products and units? Area (sq ft), pieces, rolls? | Goods + services with units | Product model, pricing |

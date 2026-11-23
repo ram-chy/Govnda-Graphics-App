@@ -12,6 +12,9 @@ class TopBar(QFrame):
     """Flat header above the content area."""
 
     theme_toggle_requested = Signal()
+    user_management_requested = Signal()
+    change_password_requested = Signal()
+    logout_requested = Signal()
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
@@ -39,6 +42,36 @@ class TopBar(QFrame):
         titles.addWidget(self.subtitle_label)
         layout.addLayout(titles)
         layout.addStretch(1)
+
+        self.user_button = QToolButton(self)
+        self.user_button.setObjectName("AccountUsersButton")
+        self.user_button.setText("Users")
+        self.user_button.setToolTip("Manage local user accounts")
+        self.user_button.setAccessibleName("Manage local user accounts")
+        self.user_button.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
+        self.user_button.clicked.connect(self.user_management_requested)
+        self.user_button.setVisible(False)
+        layout.addWidget(self.user_button)
+
+        self.password_button = QToolButton(self)
+        self.password_button.setObjectName("AccountPasswordButton")
+        self.password_button.setText("Password")
+        self.password_button.setToolTip("Change your password")
+        self.password_button.setAccessibleName("Change your password")
+        self.password_button.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
+        self.password_button.clicked.connect(self.change_password_requested)
+        self.password_button.setVisible(False)
+        layout.addWidget(self.password_button)
+
+        self.logout_button = QToolButton(self)
+        self.logout_button.setObjectName("AccountLogoutButton")
+        self.logout_button.setText("Log out")
+        self.logout_button.setToolTip("End this session")
+        self.logout_button.setAccessibleName("Log out")
+        self.logout_button.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
+        self.logout_button.clicked.connect(self.logout_requested)
+        self.logout_button.setVisible(False)
+        layout.addWidget(self.logout_button)
 
         self.theme_button = QToolButton(self)
         self.theme_button.setObjectName("ThemeButton")

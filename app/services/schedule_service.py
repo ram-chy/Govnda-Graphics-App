@@ -17,11 +17,13 @@ from pathlib import Path
 from app.core import constants
 from app.core.config import AppConfig, ConfigService
 from app.core.exceptions import ConfigurationError, SchedulerError
+from app.domain.auth import AdminEventType, PermissionKey
 from app.infrastructure.backup.task_scheduler import (
     ScheduledTaskSpec,
     TaskQuery,
     WindowsTaskScheduler,
 )
+from app.services.auth_services import AuthServices
 
 logger = logging.getLogger(__name__)
 
@@ -75,11 +77,13 @@ class ScheduleService:
         scheduler: WindowsTaskScheduler | None = None,
         command_builder: Callable[[Path], CommandParts] = default_backup_command,
         task_name: str = constants.SCHEDULED_TASK_NAME,
+        auth_services: AuthServices | None = None,
     ) -> None:
         self._config_service = config_service
         self._scheduler = scheduler or WindowsTaskScheduler()
         self._command_builder = command_builder
         self._task_name = task_name
+        self._auth_services = auth_services
 
     @property
     def task_name(self) -> str:
@@ -124,6 +128,8 @@ class ScheduleService:
         keep_minimum: int,
     ) -> ScheduleUpdate:
         """Validate, register/remove the task, then persist the settings."""
+        if self._auth_services is not None:
+            self._auth_services.authorization.require(PermissionKey.SETTINGS_APPLICATION_UPDATE)
         original = self._config_service.load()
         try:
             updated = original.with_backup_settings(
@@ -160,9 +166,7 @@ class ScheduleService:
             raise
 
         if updated.backup_enabled:
-            message = (
-                f"Automatic backups are enabled daily at {updated.backup_time} local time."
-            )
+            message = f"Automatic backups are enabled daily at {updated.backup_time} local time."
         else:
             message = "Automatic backups are disabled."
         logger.info(
@@ -172,7 +176,7 @@ class ScheduleService:
             updated.backup_retention_days,
             updated.backup_keep_minimum,
         )
-        return ScheduleUpdate(
+        result = ScheduleUpdate(
             settings=BackupSettings(
                 enabled=updated.backup_enabled,
                 time=updated.backup_time,
@@ -183,6 +187,21 @@ class ScheduleService:
             message=message,
             task=self._scheduler.query(self._task_name),
         )
+        if self._auth_services is not None:
+            self._auth_services.audit.record(
+                event_type=AdminEventType.SETTINGS_CHANGED,
+                entity_type="application_settings",
+                entity_id="backup_schedule",
+                actor=self._auth_services.session.actor,
+                payload={
+                    "setting": "backup_schedule",
+                    "enabled": updated.backup_enabled,
+                    "time": updated.backup_time,
+                    "retention_days": updated.backup_retention_days,
+                    "keep_minimum": updated.backup_keep_minimum,
+                },
+            )
+        return result
 
     def _undo_task_change(self, original: AppConfig, registered: bool) -> None:
         try:

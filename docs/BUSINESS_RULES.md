@@ -44,7 +44,7 @@ No open rule may be selected silently during implementation.
 | Inventory valuation | Weighted average suggested in Q-05 | [PROVISIONAL DEFAULT] | Q-05 |
 | Quantity scale | Up to 3 decimals; unit price up to 4 decimals in A-04 | [PROVISIONAL DEFAULT] | A-04 |
 | Quotation/order/delivery notes | Provisional default “not in v1” in Q-13 | [PROVISIONAL DEFAULT] | Q-13 |
-| Authentication | No login/roles unless owner approves | [PROVISIONAL DEFAULT] | Q-04 |
+| Authentication | Multiple local accounts with four approved roles | [RESOLVED — Phase 8B] | Q-04 |
 | Language | English only in Q-20 | [PROVISIONAL DEFAULT] | Q-20 |
 | Print format | A4 PDF sufficient in AQ-06/Q-17 | [PROVISIONAL DEFAULT] | Q-17, AQ-06 |
 | Barcode scanning | No in Q-23 | [PROVISIONAL DEFAULT] | Q-23 |
@@ -96,7 +96,7 @@ No open rule may be selected silently during implementation.
 | BR-22 | Inventory applicability | [OPEN RULE] | No stock tracking; consumables only; goods for resale; both. A graphics business may not need full stock control. | Whether stock is held, counted, or valued | Q-05, `B6-07` |
 | BR-23 | Inventory valuation | [OPEN RULE] | Weighted average; FIFO; standard cost; no valuation. Affects profit reports and stock ledger complexity. | Owner-selected valuation policy | Q-05 |
 | BR-24 | Negative stock | [OPEN RULE] | Block; allow with warning; allow with approval. Affects validation and adjustments. | Whether stock can go negative in practice | Q-06 |
-| BR-25 | Stock adjustment approval | [OPEN RULE] | No manual adjustments; owner approval; reason required; threshold. Affects audit and controls. | Who may adjust stock and why | Q-05, `B6-10` |
+| BR-25 | Stock adjustment approval | [OPEN RULE — Q-05 only] | No manual adjustments; owner approval; reason required; threshold. Affects audit and controls. `B6-10` resolved 2026-11-22: no approval workflow/threshold in v1. | Who may adjust stock and why | Q-05 |
 
 ### 3.5 Accounting, reporting, and data intake
 
@@ -113,8 +113,8 @@ No open rule may be selected silently during implementation.
 | ID | Rule area | Status | Alternatives / consequences | Information needed | Decision ref |
 | --- | --- | --- | --- | --- | --- |
 | BR-31 | User access | [OPEN RULE] | Single unrestricted local user; simple login; named roles with permissions. Affects schema, UI, audit actor, and tests. | Number of people using the app and need for separation | Q-04 |
-| BR-32 | Approval thresholds | [OPEN RULE] | No approvals; discounts/voids require approval; amount-based thresholds. Affects workflows and roles. | Which actions are sensitive and who approves | `B6-10` |
-| BR-33 | Audit trail | [OPEN RULE] | No audit; financial events only; all create/update/delete events. Affects storage, performance, and visibility. | Events to record, retention, who can view | Q-22 |
+| BR-32 | Approval thresholds | [RESOLVED 2026-11-22 under B6-10] | No approvals or amount thresholds in v1; Owner/Admin performs sensitive actions directly with auditing. | — | `B6-10` |
+| BR-33 | Audit trail | [RESOLVED 2026-11-22 under Q-22] | All significant business, security, and admin events are recorded; retention indefinite and append-only; Owner/Admin-only view and audited export. Historical `system/unauthenticated` rows unchanged. | — | Q-22 |
 | BR-34 | Attachments | [OPEN RULE] | No attachments; file links; copies inside data root; hashes and previews. Affects backup size and privacy. | Need to store receipts/artwork/proofs and policy | Q-24, AQ-04 |
 | BR-35 | Language and document format | [OPEN RULE] | English only; Bengali; bilingual; A4 only; A4 plus receipt/thermal. Affects UI and export design. | Owner/user language needs and paper formats | Q-20, Q-17, AQ-06 |
 
@@ -148,12 +148,12 @@ All permission checks, if approved, belong in application services. UI hiding/di
 
 | Action needing possible approval | Why it matters | Possible approvers | Current status |
 | --- | --- | --- | --- |
-| Discount above limit | Revenue leakage and pricing control | Owner/admin, reviewer | [OPEN RULE] `B6-10` |
+| Discount above limit | Revenue leakage and pricing control | Owner/admin | [RESOLVED — no approval/threshold in v1] `B6-10` |
 | Void posted invoice/bill | Changes reported revenue/payables | Owner/admin | [OPEN RULE] Q-14 |
 | Refund/credit note | Cash and tax/report effect | Owner/admin, reviewer | [OPEN RULE] Q-14 |
 | Bad debt/write-off | Receivables and profit effect | Owner/admin | [OPEN RULE] Q-15 |
 | Stock adjustment | Inventory valuation effect | Owner/admin | [OPEN RULE] Q-05/Q-06 |
-| Expense above threshold | Cash control | Owner/admin | [OPEN RULE] `B6-10` |
+| Expense above threshold | Cash control | Owner/admin | [RESOLVED — no approval/threshold in v1] `B6-10` |
 | Opening balance entry | Starting financial position | Owner/admin | [OPEN RULE] Q-16 |
 | Change numbering configuration | Document traceability | Owner/admin | [OPEN RULE] Q-10 |
 | Restore over current database | Destructive technical action | Owner/admin | [CONFIRMED] existing safety workflow governs execution; human authorization policy still to confirm |

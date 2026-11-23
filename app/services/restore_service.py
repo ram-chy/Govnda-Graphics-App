@@ -27,6 +27,7 @@ from pathlib import Path
 from app.core import constants
 from app.core.config import ConfigService
 from app.core.exceptions import RestoreError
+from app.domain.auth import AdminEventType, PermissionKey
 from app.domain.backup import BackupRecord, BackupType
 from app.domain.backup_assets import ManagedBackupAsset
 from app.infrastructure.backup.directories import BackupDirectories
@@ -59,6 +60,7 @@ from app.infrastructure.database.config import DatabaseConfig
 from app.infrastructure.database.engine import Database
 from app.infrastructure.database.health import DatabaseDiagnostics
 from app.infrastructure.database.migrations import verify_database_for_startup
+from app.services.auth_services import AuthServices
 from app.services.backup_service import BackupResult, BackupService, ProgressCallback
 from app.services.database_runtime import DatabaseRuntime
 
@@ -106,6 +108,7 @@ class RestoreService:
         replace_file: Callable[[Path, Path], object] = os.replace,
         verifier: Callable[[Path], DatabaseVerification] = verify_database_file,
         reopen: Callable[[Path], Database] | None = None,
+        auth_services: AuthServices | None = None,
     ) -> None:
         self._config_service = config_service
         self._runtime = runtime
@@ -120,6 +123,7 @@ class RestoreService:
         self._verifier = verifier
         self._reopen = reopen or _reopen_and_verify
         self._history = BackupHistory(directories)
+        self._auth_services = auth_services
 
     def prepare(self, record: BackupRecord) -> RestoreCandidate:
         """Re-verify one history record; raise if it may not be restored."""
@@ -197,8 +201,7 @@ class RestoreService:
             raise RestoreError(
                 f"backup size changed: {actual_size} != {metadata.backup_bytes}",
                 user_message=(
-                    "The selected backup file changed after it was created. It cannot be "
-                    "restored."
+                    "The selected backup file changed after it was created. It cannot be restored."
                 ),
             )
 
@@ -262,10 +265,22 @@ class RestoreService:
         assume_locked: bool = False,
     ) -> RestoreResult:
         """Replace the live database with a fully verified staged copy."""
+        self._require_permission(PermissionKey.BACKUP_RESTORE)
         if assume_locked:
-            return self._restore(candidate, progress=progress)
-        with self._lock:
-            return self._restore(candidate, progress=progress)
+            result = self._restore(candidate, progress=progress)
+        else:
+            with self._lock:
+                result = self._restore(candidate, progress=progress)
+        self._record_sensitive_event(
+            event_type=AdminEventType.BACKUP_RESTORED,
+            entity_id=candidate.record.file_name,
+            payload={
+                "backup_file": candidate.record.file_name,
+                "database_path": str(result.database_path),
+                "safety_backup_file": result.safety_backup.file_name,
+            },
+        )
+        return result
 
     def _restore(
         self,
@@ -507,16 +522,10 @@ class RestoreService:
             database_rolled_back = False
             asset_rolled_back = not assets_replaced
             rollback_error: Exception | None = None
-            if (
-                assets_replaced
-                and asset_target is not None
-                and asset_rollback is not None
-            ):
+            if assets_replaced and asset_target is not None and asset_rollback is not None:
                 try:
                     self._report(progress, 90, "Rolling back managed profile files")
-                    self._restore_managed_assets(
-                        asset_target, asset_rollback, asset_source_existed
-                    )
+                    self._restore_managed_assets(asset_target, asset_rollback, asset_source_existed)
                 except Exception as rollback_exc:  # noqa: BLE001 - recovery boundary
                     asset_rolled_back = False
                     rollback_error = rollback_exc
@@ -547,9 +556,7 @@ class RestoreService:
                 else:
                     marker.clear()
 
-            self._state.record_failure(
-                f"restore failed: {exc}", when=started
-            )
+            self._state.record_failure(f"restore failed: {exc}", when=started)
             self._state.write_last_error(f"restore failed: {exc}", when=started)
             logger.error("Restore failed: %s", exc, exc_info=True)
             if rolled_back:
@@ -643,6 +650,23 @@ class RestoreService:
             target_dir.unlink()
         if source_existed and rollback_dir.is_dir():
             shutil.move(str(rollback_dir), str(target_dir))
+
+    def _require_permission(self, permission: PermissionKey) -> None:
+        if self._auth_services is not None:
+            self._auth_services.authorization.require(permission)
+
+    def _record_sensitive_event(
+        self, *, event_type: str, entity_id: str, payload: dict[str, object]
+    ) -> None:
+        if self._auth_services is None:
+            return
+        self._auth_services.audit.record(
+            event_type=event_type,
+            entity_type="database",
+            entity_id=entity_id,
+            actor=self._auth_services.session.actor,
+            payload=payload,
+        )
 
     def _confirm_safety_backup(self, result: BackupResult) -> None:
         verification = self._verifier(result.path)

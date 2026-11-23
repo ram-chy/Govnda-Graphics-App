@@ -20,11 +20,19 @@ from app.infrastructure.database.models import (
     AuditEventRecord,
     BusinessProfileRecord,
     BusinessProfileVersionRecord,
+    LoginThrottleRecord,
+    PartyRecord,
+    RoleRecord,
+    UserRecord,
 )
 
 assert BusinessProfileRecord.__tablename__ == "business_profile"
 assert BusinessProfileVersionRecord.__tablename__ == "business_profile_versions"
 assert AuditEventRecord.__tablename__ == "audit_events"
+assert RoleRecord.__tablename__ == "roles"
+assert UserRecord.__tablename__ == "users"
+assert LoginThrottleRecord.__tablename__ == "login_throttles"
+assert PartyRecord.__tablename__ == "parties"
 
 config = context.config
 

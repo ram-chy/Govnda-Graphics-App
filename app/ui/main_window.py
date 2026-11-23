@@ -5,10 +5,11 @@ from __future__ import annotations
 import logging
 from pathlib import Path
 
-from PySide6.QtCore import QByteArray, QSettings, Qt
+from PySide6.QtCore import QByteArray, QEvent, QSettings, Qt, QTimer
 from PySide6.QtGui import QCloseEvent, QKeySequence, QShortcut
 from PySide6.QtWidgets import (
     QApplication,
+    QDialog,
     QHBoxLayout,
     QLabel,
     QMainWindow,
@@ -20,30 +21,41 @@ from PySide6.QtWidgets import (
 
 from app.core import constants
 from app.core.config import ConfigService
+from app.domain.auth import SESSION_ENTITY_TYPE, AuthEventType, actor_for_user
+from app.domain.party import PartyKind
+from app.services.auth_services import AuthServices
+from app.services.auth_support import actor_payload
 from app.services.backup_workspace import BackupWorkspaceFactory
 from app.services.business_profile_service import BusinessProfileServiceFactory
 from app.services.database_runtime import DatabaseRuntime
+from app.services.party_service import PartyServiceFactory
 from app.ui.components.placeholder_view import PlaceholderView
 from app.ui.components.sidebar import NavGroup, NavItem, Sidebar
 from app.ui.components.top_bar import TopBar
+from app.ui.dialogs.auth_dialogs import (
+    LockDialog,
+    LoginDialog,
+    PasswordChangeDialog,
+    UserManagementDialog,
+)
 from app.ui.formatting import format_backup_time
 from app.ui.themes.manager import ThemeManager
 from app.ui.themes.tokens import METRICS
 from app.ui.viewmodels.backup_viewmodel import BackupSnapshot, BackupViewModel
 from app.ui.viewmodels.business_profile_viewmodel import BusinessProfileViewModel
+from app.ui.viewmodels.party_viewmodel import PartyViewModel
 from app.ui.viewmodels.shell_viewmodel import ShellViewModel
 from app.ui.views.backup_view import BackupView
 from app.ui.views.business_profile_view import BusinessProfileView
 from app.ui.views.home_view import HomeView
+from app.ui.views.party_view import PartyView
 
 logger = logging.getLogger(__name__)
 
 NAVIGATION_GROUPS: tuple[NavGroup, ...] = (
     NavGroup(
         title="Overview",
-        items=(
-            NavItem("dashboard", "Dashboard", "Foundation build - no business data yet"),
-        ),
+        items=(NavItem("dashboard", "Dashboard", "Foundation build - no business data yet"),),
     ),
     NavGroup(
         title="Operations",
@@ -97,6 +109,8 @@ class MainWindow(QMainWindow):
         database_runtime: DatabaseRuntime | None = None,
         workspace_factory: BackupWorkspaceFactory | None = None,
         business_profile_factory: BusinessProfileServiceFactory | None = None,
+        party_factory: PartyServiceFactory | None = None,
+        auth_services: AuthServices | None = None,
         settings: QSettings | None = None,
         parent: QWidget | None = None,
     ) -> None:
@@ -114,6 +128,9 @@ class MainWindow(QMainWindow):
         self._backup_viewmodel: BackupViewModel | None = None
         self._backup_status: QLabel | None = None
         self._business_profile_viewmodel: BusinessProfileViewModel | None = None
+        self._party_factory = party_factory
+        self._auth_services = auth_services
+        self._lock_dialog: LockDialog | None = None
         if business_profile_factory is not None:
             self._business_profile_viewmodel = BusinessProfileViewModel(
                 business_profile_factory, parent=self
@@ -146,6 +163,7 @@ class MainWindow(QMainWindow):
         self._setup_shortcuts()
         geometry_restored = self._restore_geometry()
         self._session_restored = True
+        self._install_idle_monitor()
 
         saved_key = self._settings.value("navigation/current", "dashboard", type=str)
         self.navigate(saved_key if saved_key in _NAV_ITEMS else "dashboard")
@@ -197,6 +215,131 @@ class MainWindow(QMainWindow):
             self._settings.setValue("navigation/current", key)
         logger.info("Navigated to %s", key)
 
+    def _install_idle_monitor(self) -> None:
+        if self._auth_services is None:
+            return
+        self._idle_timer = QTimer(self)
+        self._idle_timer.setInterval(30_000)
+        self._idle_timer.timeout.connect(self._on_idle_tick)
+        self._idle_timer.start()
+        app = QApplication.instance()
+        if app is not None:
+            app.installEventFilter(self)
+
+    def eventFilter(self, watched: object, event: QEvent) -> bool:  # noqa: N802 - Qt API
+        active_events = {
+            QEvent.Type.KeyPress,
+            QEvent.Type.KeyRelease,
+            QEvent.Type.MouseButtonPress,
+            QEvent.Type.MouseButtonRelease,
+            QEvent.Type.MouseButtonDblClick,
+            QEvent.Type.Wheel,
+            QEvent.Type.TouchBegin,
+            QEvent.Type.TouchEnd,
+        }
+        if (
+            self._auth_services is not None
+            and event.type() in active_events
+            and not self._auth_services.session.is_locked
+        ):
+            self._auth_services.session.touch()
+        return super().eventFilter(watched, event)
+
+    def _on_idle_tick(self) -> None:
+        if self._auth_services is None:
+            return
+        session = self._auth_services.session
+        if session.should_lock() and self._lock_dialog is None and session.lock():
+            identity = session.identity
+            if identity is not None:
+                self._auth_services.audit.record(
+                    event_type=AuthEventType.LOCK,
+                    entity_type=SESSION_ENTITY_TYPE,
+                    entity_id=str(identity.user_id),
+                    actor=actor_for_user(identity.user_id, identity.username),
+                    payload=actor_payload(session),
+                )
+            self._show_lock_dialog()
+
+    def _show_lock_dialog(self) -> None:
+        if self._auth_services is None or self._lock_dialog is not None:
+            return
+        dialog = LockDialog(self._auth_services, self)
+        self._lock_dialog = dialog
+        dialog.setWindowModality(Qt.WindowModality.ApplicationModal)
+        try:
+            result = dialog.exec()
+        finally:
+            self._lock_dialog = None
+        if result == QDialog.DialogCode.Accepted:
+            self._sync_account_ui()
+            return
+        if getattr(dialog, "exit_requested", False):
+            # Closing while locked ends the session without exposing data.
+            self._auth_services.session.end()
+            app = QApplication.instance()
+            if app is not None:
+                app.quit()
+            return
+        if self._auth_services.session.is_locked:
+            # A locked session must not expose the application.
+            self._show_lock_dialog()
+            return
+        if self._auth_services.session.identity is None:
+            login = LoginDialog(self._auth_services.authentication, self)
+            if login.exec() != QDialog.DialogCode.Accepted:
+                app = QApplication.instance()
+                if app is not None:
+                    app.quit()
+                return
+            self._sync_account_ui()
+
+    def _sync_account_ui(self) -> None:
+        auth = self._auth_services
+        if auth is None:
+            return
+        identity = auth.session.identity
+        authenticated = identity is not None and not auth.session.is_locked
+        self._top_bar.user_button.setVisible(
+            authenticated and auth.authorization.has_permission("user.edit_identity")
+        )
+        self._top_bar.password_button.setVisible(
+            authenticated and auth.authorization.has_permission("auth.password_change_self")
+        )
+        self._top_bar.logout_button.setVisible(
+            authenticated and auth.authorization.has_permission("auth.logout")
+        )
+        if hasattr(self, "_session_status"):
+            if identity is None:
+                self._session_status.setText("Signed out")
+            else:
+                self._session_status.setText(f"User: {identity.username}")
+
+    def _open_user_management(self) -> None:
+        if self._auth_services is None:
+            return
+        dialog = UserManagementDialog(self._auth_services, self)
+        dialog.exec()
+        self._sync_account_ui()
+
+    def _open_change_password(self) -> None:
+        if self._auth_services is None:
+            return
+        dialog = PasswordChangeDialog(self._auth_services, self)
+        dialog.exec()
+        self._sync_account_ui()
+
+    def _logout(self) -> None:
+        if self._auth_services is None:
+            return
+        self._auth_services.authentication.logout()
+        self._sync_account_ui()
+        login = LoginDialog(self._auth_services.authentication, self)
+        if login.exec() != QDialog.DialogCode.Accepted:
+            QApplication.instance().quit() if QApplication.instance() is not None else None
+            return
+        self._sync_account_ui()
+
     def closeEvent(self, event: QCloseEvent) -> None:
         if self._backup_viewmodel is not None and self._backup_viewmodel.is_busy:
             logger.info("Close requested while a backup operation is running")
@@ -209,6 +352,8 @@ class MainWindow(QMainWindow):
             )
             event.ignore()
             return
+        if self._auth_services is not None and self._auth_services.session.is_locked:
+            self._auth_services.session.end()
         self._save_session()
         logger.info("Main window closing")
         if self._backup_viewmodel is not None:
@@ -295,6 +440,9 @@ class MainWindow(QMainWindow):
 
         self._top_bar = TopBar(content_area)
         self._top_bar.theme_toggle_requested.connect(self._toggle_theme)
+        self._top_bar.user_management_requested.connect(self._open_user_management)
+        self._top_bar.change_password_requested.connect(self._open_change_password)
+        self._top_bar.logout_requested.connect(self._logout)
         content_layout.addWidget(self._top_bar)
 
         self._stack = QStackedWidget(content_area)
@@ -326,10 +474,12 @@ class MainWindow(QMainWindow):
         if self._backup_viewmodel is not None:
             self._backup_status = QLabel("Backup: not checked", status)
             self._backup_status.setAccessibleName("Last verified backup")
-            self._backup_status.setToolTip(
-                "Open Backup to review the verified backup history."
-            )
+            self._backup_status.setToolTip("Open Backup to review the verified backup history.")
             status.addPermanentWidget(self._backup_status)
+
+        self._session_status = QLabel("Signed out", status)
+        self._session_status.setAccessibleName("Current user")
+        status.addPermanentWidget(self._session_status)
 
         currency = self._viewmodel.currency
         currency_status = QLabel(f"{currency.code} {currency.symbol}", status)
@@ -347,13 +497,20 @@ class MainWindow(QMainWindow):
         version_status.setAccessibleName(f"Version {app_version}")
         status.addPermanentWidget(version_status)
 
+        self._sync_account_ui()
+
     def _create_view(self, key: str, item: NavItem) -> QWidget:
         if key == "dashboard":
             return self._build_home_view()
         if key == "backup" and self._backup_viewmodel is not None:
-            return BackupView(self._backup_viewmodel, self)
+            return BackupView(self._backup_viewmodel, self, auth_services=self._auth_services)
         if key == "settings" and self._business_profile_viewmodel is not None:
             return BusinessProfileView(self._business_profile_viewmodel, self)
+        if key in {"customers", "suppliers"} and self._party_factory is not None:
+            kind = PartyKind.CUSTOMER if key == "customers" else PartyKind.SUPPLIER
+            vm = PartyViewModel(kind, self._party_factory, parent=self)
+            vm.status_message.connect(self._show_status_message)
+            return PartyView(vm, self)
         return PlaceholderView(item.label, item.subtitle, self)
 
     def _build_home_view(self) -> HomeView:

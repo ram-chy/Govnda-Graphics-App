@@ -18,6 +18,7 @@ dependencies = [
     "pyqtgraph~=0.14.0",
     "reportlab~=5.1.0",
     "openpyxl~=3.1.5",
+    "argon2-cffi~=25.1.0",
 ]
 
 [project.optional-dependencies]

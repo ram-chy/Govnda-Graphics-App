@@ -22,9 +22,11 @@ from app.core.paths import AppPaths
 from app.infrastructure.database.config import DatabaseConfig
 from app.infrastructure.database.engine import Database
 from app.infrastructure.database.migrations import verify_database_for_startup
+from app.services.auth_services import AuthServices
 from app.services.backup_workspace import BackupWorkspace, BackupWorkspaceFactory
 from app.services.business_profile_service import BusinessProfileServiceFactory
 from app.services.database_runtime import DatabaseRuntime
+from app.services.party_service import PartyServiceFactory
 
 logger = logging.getLogger(__name__)
 
@@ -44,17 +46,42 @@ class AppContext:
     runtime: DatabaseRuntime = field(default_factory=DatabaseRuntime)
     workspace_factory: BackupWorkspaceFactory = field(init=False)
     business_profile_factory: BusinessProfileServiceFactory = field(init=False)
+    party_factory: PartyServiceFactory = field(init=False)
+    auth_services: AuthServices | None = field(init=False, default=None)
 
     def __post_init__(self) -> None:
+        auth_services: AuthServices | None = None
+        if self.runtime.database is not None:
+            auth_services = AuthServices.create(
+                self.runtime,
+                idle_timeout_seconds=self.config.idle_timeout_seconds,
+            )
+        object.__setattr__(self, "auth_services", auth_services)
         object.__setattr__(
             self,
             "workspace_factory",
-            BackupWorkspaceFactory(self.config_service, self.runtime),
+            BackupWorkspaceFactory(
+                self.config_service,
+                self.runtime,
+                auth_services=auth_services,
+            ),
         )
         object.__setattr__(
             self,
             "business_profile_factory",
-            BusinessProfileServiceFactory(self.config_service, self.runtime),
+            BusinessProfileServiceFactory(
+                self.config_service,
+                self.runtime,
+                auth_services=auth_services,
+            ),
+        )
+        object.__setattr__(
+            self,
+            "party_factory",
+            PartyServiceFactory(
+                self.runtime,
+                auth_services=auth_services,
+            ),
         )
 
     @classmethod
@@ -112,6 +139,8 @@ class AppContext:
 
     def close(self) -> None:
         """Release pooled database connections. Safe to call more than once."""
+        if self.auth_services is not None:
+            self.auth_services.end_session()
         self.runtime.close()
 
 

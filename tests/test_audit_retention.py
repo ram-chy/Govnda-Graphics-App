@@ -191,16 +191,15 @@ def test_no_automatic_audit_cleanup_or_scheduled_purge() -> None:
 
     assert offenders == []
 
+    # Phase 8B intentionally records audited settings changes in schedule_service.
     audit_free_sources = [
         REPO_ROOT / "app/core/constants.py",
-        REPO_ROOT / "app/services/schedule_service.py",
         REPO_ROOT / "app/infrastructure/backup/task_scheduler.py",
         REPO_ROOT / "app/services/retention_service.py",
         REPO_ROOT / "app/infrastructure/backup/retention.py",
     ]
     assert all(
-        "audit" not in path.read_text(encoding="utf-8").casefold()
-        for path in audit_free_sources
+        "audit" not in path.read_text(encoding="utf-8").casefold() for path in audit_free_sources
     )
 
 
@@ -247,9 +246,7 @@ def test_upgrade_preserves_profile_and_creates_protected_audit_history(
     verify_audit_structure(initialized_database.config.path)
 
 
-def test_backup_and_restore_preserve_all_audit_events(
-    tmp_path: Path, config_service
-) -> None:
+def test_backup_and_restore_preserve_all_audit_events(tmp_path: Path, config_service) -> None:
     root, database_path = create_data_root(tmp_path)
     _insert_audit(database_path, 1, "business_profile.created", "2026-11-21T09:00:00Z")
     _insert_audit(database_path, 2, "business_profile.logo_changed", "2026-11-21T09:01:00Z")

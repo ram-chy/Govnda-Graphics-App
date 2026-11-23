@@ -211,5 +211,5 @@ Report implementation is blocked until the owner settles:
 - Q-17/AQ-06 print formats.
 - `B6-01` pricing basis.
 - `B6-02`–`B6-04` job/delivery scope.
-- `B6-10` approval policies.
+- `B6-10` approval policies (resolved 2026-11-22 — no approvals in v1).
 - `B6-12` dashboard metric definitions.

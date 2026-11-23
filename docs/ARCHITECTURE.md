@@ -3,9 +3,9 @@
 | Field | Value |
 | --- | --- |
 | Document | ARCHITECTURE.md |
-| Version | 1.7 |
-| Date | 2026-11-20; Phase 7B-1 audit retention corrected 2026-11-21 |
-| Status | Phases 1–6, 7 gate, Phase 7A, Phase 7B, and Phase 7B-1 audit-retention correction implemented |
+| Version | 1.8 |
+| Date | 2026-11-20; Phase 7B-1 audit retention corrected 2026-11-21; Phase 8B authentication added 2026-11-23 |
+| Status | Phases 1–6, 7 gate, Phase 7A, Phase 7B, Phase 7B-1 audit-retention correction, and Phase 8B authentication/authorization implemented; owner review pending |
 | Audience | Developers, reviewer, future maintainers |
 | Related | BLUEPRINT.md, DATABASE_SCHEMA.md, BACKUP_STRATEGY.md, DEVELOPMENT_ROADMAP.md |
 
@@ -13,7 +13,13 @@
 
 Phase 7B supersedes the Phase 7A text-only/no-history/no-logo/no-audit scope for Business Profile. The data root now includes `Logos/`, managed by `LogoStorageService`. The application adds `business_logo.py`, `backup_assets.py`, version/audit repositories, and a profile service that coordinates logo storage, immutable version snapshots, and durable audit events with actor `system/unauthenticated`.
 
-The schema head is migration `0003_business_profile_requirements`, which adds profile columns plus `business_profile_versions` and `audit_events` with immutability triggers. Backup sidecars can embed managed logo bytes under `managed_assets`; restore and relocation preserve `Logos/` and roll back on failure. Phase 7B-1 makes the audit policy explicit: audit history is append-only and retained indefinitely, with no expiry, retention configuration, scheduled purge, or ordinary deletion path. Verified restore carries forward audit events created after the selected backup, and schema downgrades that would drop audit rows are refused. No new migration was required. Later Phase 7A-only statements remain historical and are superseded where they contradict this section.
+The Phase 7B schema head was migration `0003_business_profile_requirements`, which adds profile columns plus `business_profile_versions` and `audit_events` with immutability triggers; the current head is `0004_authentication`. Backup sidecars can embed managed logo bytes under `managed_assets`; restore and relocation preserve `Logos/` and roll back on failure. Phase 7B-1 makes the audit policy explicit: audit history is append-only and retained indefinitely, with no expiry, retention configuration, scheduled purge, or ordinary deletion path. Verified restore carries forward audit events created after the selected backup, and schema downgrades that would drop audit rows are refused. Later Phase 7A-only statements remain historical and are superseded where they contradict this section.
+
+## Phase 8B authentication architecture (authoritative)
+
+Phase 8B adds a local authentication slice without changing the existing business workflows. The domain layer defines four roles and only the approved `A` permissions. Infrastructure adds password hashing, auth repositories/ORM records, and migration `0004_authentication`. Services are composed as `AuthServices` inside `AppContext`: `SessionService` owns the single in-memory session, `AuthenticationService` handles first-run/login/unlock/logout/throttling, `AuthorizationService` is the single service-boundary check, `UserAccountService` and `PasswordService` manage accounts, `AuthAuditService` writes append-only events, and `SensitiveOperationService` gates and audits administrative work.
+
+`AppContext` wires the same auth graph into `BackupWorkspaceFactory`, `BusinessProfileServiceFactory`, restore, relocation, and schedule services. Every service resolves the live database through `DatabaseRuntime`, so restore/relocation cannot leave stale authorization or audit connections. UI account buttons are advisory; service-layer checks remain authoritative. `app/main.py` shows the first-run/login dialogs in production and skips the interactive gate only for `--smoke-test`, which never seeds a known credential. `MainWindow` installs the active idle activity filter, lock screen, lock/unlock/logout handling, and ends the session when the lock screen is exited or the application closes while locked. `app.ui.auth.session_guard.SessionGuard` provides a reusable equivalent component; future data-surfacing background workers should integrate with the lock contract explicitly.
 
 ## 1. Architecture goals
 

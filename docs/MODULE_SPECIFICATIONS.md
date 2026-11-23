@@ -214,7 +214,7 @@ Shared services must not become a place for undocumented business decisions. Eac
 - **Validation/restrictions:** Posted invoices cannot be silently edited/deleted; tax, discount, numbering, credit terms, and cancellations are unapproved.
 - **Outputs:** Invoice document, sales register, receivables, customer statement source data.
 - **Dependencies:** Customer and catalogue; profile for printing; payment/module decisions.
-- **Open decisions:** Q-03, Q-08, Q-09, Q-10, Q-13, Q-14, Q-17, `B6-05`, `B6-08`, `B6-10`.
+- **Open decisions:** Q-03, Q-08, Q-09, Q-10, Q-13, Q-14, Q-17, `B6-05`, `B6-08` (`B6-10` resolved 2026-11-22 — no approvals in v1).
 
 ### 5.8 Payments / receivables
 
@@ -266,7 +266,7 @@ Shared services must not become a place for undocumented business decisions. Eac
 - **Validation/restrictions:** Categories, tax, approval thresholds, and posting effects are unapproved.
 - **Outputs:** Expense register, expense summary, profit-and-loss source data if approved.
 - **Dependencies:** Attachment and accounting decisions for full functionality.
-- **Open decisions:** Q-03, Q-15, Q-24, `B6-10`.
+- **Open decisions:** Q-03, Q-15, Q-24 (`B6-10` resolved 2026-11-22 — no approvals in v1).
 
 ### 5.12 Inventory
 
@@ -318,7 +318,7 @@ Shared services must not become a place for undocumented business decisions. Eac
 - **Validation/restrictions:** Q-04 is open. Local single-user operation remains the operating assumption until approval.
 - **Outputs:** Permission decisions and audit actor identity.
 - **Dependencies:** Secure credential storage decision and architecture review.
-- **Open decisions:** Q-04, Q-18, Q-22.
+- **Open decisions:** Q-04, Q-18 (Q-22 resolved 2026-11-22).
 
 ### 5.16 Audit / history
 
@@ -328,10 +328,10 @@ Shared services must not become a place for undocumented business decisions. Eac
 - **Domain responsibilities:** Append-only event semantics, actor identity, correlation ID, event summaries.
 - **Data requirements:** Entity type/id, event type, timestamp, actor if available, correlation ID, before/after summary, reason if applicable.
 - **Relationships:** All posted/corrected business records.
-- **Validation/restrictions:** Audit retention, redaction, and visibility are unapproved; actor identity depends on Q-04.
+- **Validation/restrictions:** Audit retention (indefinite, append-only) and visibility (Owner/Admin-only view + audited export) resolved under Q-22 (2026-11-22); redaction and future actor identity still depend on Q-04.
 - **Outputs:** Record history, audit exports if approved.
 - **Dependencies:** Application-service interception points; decision on actor model.
-- **Open decisions:** Q-04, Q-22, `B6-11`.
+- **Open decisions:** Q-04, `B6-11` (Q-22 resolved 2026-11-22).
 
 ### 5.17 Attachments
 
@@ -368,7 +368,7 @@ These are functional planning requirements, not table definitions or migration i
 | Stock movement | Inventory effect if approved | Item, quantity, unit, source, date, valuation | Catalogue, sales, purchases | Append-only; reversals explicit | [REQUIRES OWNER CLARIFICATION] |
 | Document sequence | Numbering source | Document type, period/scope if approved, next value rule | All numbered documents | Never silently reused | [REQUIRES OWNER CLARIFICATION] Q-10 |
 | Attachment metadata | Supporting files | File name, type, size, hash, link, storage reference | Business records | Removal policy unapproved | [REQUIRES OWNER CLARIFICATION] Q-24 |
-| Audit event | accountability/history | Entity, event, actor, timestamp, correlation ID, summary | All significant records | Append-only; retention unapproved | [PROPOSED] Q-04/Q-22 |
+| Audit event | accountability/history | Entity, event, actor, timestamp, correlation ID, summary | All significant records | Append-only; indefinite retention; Owner/Admin-only view/export; all significant events recorded | [RESOLVED 2026-11-22] Q-22 |
 | User/role | Conditional access model | Identity, roles, status | All protected actions | Lifecycle unapproved | [REQUIRES OWNER CLARIFICATION] Q-04 |
 
 ## 7. Module prerequisites

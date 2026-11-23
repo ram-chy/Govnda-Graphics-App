@@ -32,6 +32,7 @@ from app.infrastructure.database.migrations import (
 )
 from app.infrastructure.filesystem.layout import DataRootLayout
 from app.infrastructure.filesystem.validation import DataLocationValidator
+from app.services.auth_services import AuthServices
 from app.services.backup_service import BackupService
 from app.services.catch_up_service import CatchUpService
 from app.services.database_runtime import DatabaseRuntime
@@ -89,6 +90,7 @@ class BackupWorkspaceFactory:
         migrations_dir: Path | None = None,
         app_version: str = constants.APP_VERSION,
         clock: Callable[[], datetime] | None = None,
+        auth_services: AuthServices | None = None,
     ) -> None:
         self._config_service = config_service
         self._runtime = runtime
@@ -97,6 +99,7 @@ class BackupWorkspaceFactory:
         self._migrations_dir = migrations_dir
         self._app_version = app_version
         self._clock = clock
+        self._auth_services = auth_services
         self._head: str | None = None
 
     @property
@@ -153,6 +156,7 @@ class BackupWorkspaceFactory:
             expected_schema_revision=expected,
             state_store=state_store,
             clock=self._clock,
+            auth_services=self._auth_services,
         )
         relocation_service = RelocationService(
             config_service=self._config_service,
@@ -162,6 +166,7 @@ class BackupWorkspaceFactory:
             validator=self._validator,
             state_store=state_store,
             clock=self._clock,
+            auth_services=self._auth_services,
         )
         upgrade_service = UpgradeService(
             directories=directories,
@@ -174,6 +179,7 @@ class BackupWorkspaceFactory:
         schedule_service = ScheduleService(
             self._config_service,
             scheduler=self._scheduler,
+            auth_services=self._auth_services,
         )
         catch_up_service = CatchUpService(
             config_service=self._config_service,
@@ -211,9 +217,7 @@ class BackupWorkspaceFactory:
 
     def _expected_revision(self) -> str:
         if self._head is None:
-            self._head = application_head_revision(
-                self._migrations_dir or default_migrations_dir()
-            )
+            self._head = application_head_revision(self._migrations_dir or default_migrations_dir())
         return self._head
 
 

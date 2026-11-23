@@ -3,14 +3,30 @@
 | Field | Value |
 | --- | --- |
 | Document | DEVELOPMENT_ROADMAP.md |
-| Version | 1.7 |
-| Date | 2026-11-18; Phase 7A and Phase 7B added 2026-11-20 |
-| Status | Phases 0–7 complete; Phase 7A and Phase 7B Business Profile correction implemented; other business decisions remain open |
-| Related | BLUEPRINT.md, ARCHITECTURE.md, DATABASE_SCHEMA.md, BACKUP_STRATEGY.md, BUSINESS_REQUIREMENTS.md, BUSINESS_WORKFLOWS.md, MODULE_SPECIFICATIONS.md, BUSINESS_RULES.md, REPORTING_REQUIREMENTS.md, OPEN_DECISIONS.md, PHASE_07_OWNER_DECISION_WORKSHEET.md, PHASE_07_FIRST_MODULE_SPECIFICATION.md, PHASE_07_IMPLEMENTATION_READINESS.md |
+| Version | 1.10 |
+| Date | 2026-11-18; Phase 7A and Phase 7B added 2026-11-20; Phase 7C verification added 2026-11-22; Phase 8A specification added 2026-11-22; Phase 8B implementation added 2026-11-23; Phase 9 Customer & Supplier Management implemented 2026-11-23 |
+| Status | Phases 0–7 complete; Phase 7A and Phase 7B Business Profile correction implemented; Phase 7C verification complete with owner acceptance pending; Phase 8A specification approved; Phase 8B authentication/authorization implemented with owner review pending; Phase 9 Customer & Supplier Management implemented per approved prompt with owner review pending; other business decisions remain open |
+| Related | BLUEPRINT.md, ARCHITECTURE.md, DATABASE_SCHEMA.md, BACKUP_STRATEGY.md, BUSINESS_REQUIREMENTS.md, BUSINESS_WORKFLOWS.md, MODULE_SPECIFICATIONS.md, BUSINESS_RULES.md, REPORTING_REQUIREMENTS.md, OPEN_DECISIONS.md, PHASE_07_OWNER_DECISION_WORKSHEET.md, PHASE_07_FIRST_MODULE_SPECIFICATION.md, PHASE_07_IMPLEMENTATION_READINESS.md, AUTHENTICATION_SPECIFICATION.md, AUTHORIZATION_MATRIX.md, USER_ACCOUNT_WORKFLOWS.md, SESSION_AND_IDLE_LOCK_SPECIFICATION.md, PHASE_08_OWNER_DECISION_WORKSHEET.md, PHASE_08_IMPLEMENTATION_READINESS.md |
 
 ## Phase 7B status (authoritative)
 
 Phase 7B corrects the Business Profile slice after Phase 7A. The corrected slice has six mandatory fields including a managed logo, three optional fields, immutable version history, durable profile audit events with `system/unauthenticated`, migration `0003_business_profile_requirements`, and managed logo preservation through backup, restore, and relocation. Phase 8 may depend on the corrected profile data and header rules. Earlier Phase 7A-only statements about text-only scope, no history, no logo, and no audit are historical and superseded for this slice only.
+
+## Phase 7C status (verification only)
+
+Phase 7C verified the corrected Business Profile slice on Windows without modifying application code or the owner's live database. Automated tests and Ruff passed, isolated profile/logo/history/audit/backup/restore/relocation/startup checks passed, and native Windows UI rendering was captured at 100%, 125%, and 150% scaling in both themes. Scheduled-task execution, owner visual review, and owner acceptance remain pending; see `Reports/PHASE_07C_REPORT.md`. This status does **not** mark the module owner-accepted.
+
+## Phase 8A status (specification gate — historical record)
+
+Phase 8A was the authentication/authorization **requirements finalization and technical specification** gate. It produced seven planning documents (authentication specification, authorization matrix, account workflows, session/idle-lock specification, owner decision worksheet, implementation readiness, and `Reports/PHASE_08A_REPORT.md`) and updated `OPEN_DECISIONS.md`. Phase 8A itself was **planning/specification work only**: no login, password hashing, user management, role/permission checks, schema, migration, seed user, audit change, or owner database change was made. All owner decisions (`P8A-01`–`P8A-08`, `Q-22`, `B6-10`) were resolved, the owner explicitly approved the complete specification/matrix and hashing design on 2026-11-22, Phase 7D owner acceptance was recorded 2026-11-22 (`Reports/PHASE_07D_ACCEPTANCE.md`), and the final parameter review was complete. The Phase 8A "NOT READY / do not implement" statements remain accurate for that gate and were superseded when the owner explicitly authorized Phase 8B implementation on 2026-11-22.
+
+## Phase 8B status (implementation complete — owner review pending)
+
+Phase 8B implemented the approved authentication slice in isolated, uncommitted work. It added Argon2id hashing with a scrypt fallback, first-run owner creation, local accounts and password workflows, exactly four roles, service-layer authorization, failed-login throttling, an in-memory session with idle lock, startup/login/lock dialogs, append-only authentication audit events, and migration `0004_authentication`. Only `A`-marked permissions are implemented; `P`/`O` permissions, approval workflows, new business modules, default users, cloud/OTP recovery, and new roles remain out of scope. See `Reports/PHASE_08B_REPORT.md` for scope, verification commands, exact results, limitations, and the pending owner acceptance checklist.
+
+## Phase 9 status (Customer & Supplier Management, per prompt — implementation complete, owner review pending)
+
+Phase 9 implemented the approved Customer & Supplier master-data slice per `Prompt/Phase 9 — Customer & Supplier Management.md`. Scope is intentionally limited to basic party identity/contact records (name required; phone, email, address, contact person, notes, is_active optional), search/list, create/edit, duplicate warning with explicit confirmation, activate/deactivate, service-layer authorization, and append-only audit events. No financial ledger/opening balance/credit/tax/transaction behavior, no hard delete, and no sample/seed data in the real DB were added. Migration `0005_party_master` adds the `parties` table. The pre-existing roadmap section labeled "Phase 9 — Accounting and expenses" remains the earlier planning label and is not implemented by this slice; owner/roadmap reconciliation may be needed. See `Reports/PHASE_09_REPORT.md`.
 
 ## 1. Principles
 
@@ -34,7 +50,7 @@ Q-04 / AQ-05 decision ─→ renumbered auth phase, only if required
 - Phase 6 is the completed business requirements, workflows, and module-planning documentation phase. It is not authentication implementation.
 - Phase 7 was the owner-decision and first-module specification approval gate. It was documentation-only; its gate passed on 2026-11-20 for the minimal slice.
 - Phase 7A is the approved first business module: Business Settings — Business Profile only. Other modules remain blocked by their own decisions.
-- The historical authentication phase remains conditional and deferred. If Q-04/AQ-05 approves roles, it must be renumbered and placed according to the modules it affects.
+- The historical authentication phase is no longer deferred. Phase 8A completed its specification only; Phase 8B implemented that approved specification after explicit owner authorization on 2026-11-22. Future business modules still require their own module-specific decisions and approvals.
 - Phase 4 depends on Phase 2 (database) and Phase 3 (known data root), not on the full UI.
 - Business master-data implementation needs the application shell from Phase 5 and owner approval of the module-specific rules in `OPEN_DECISIONS.md`.
 - Phase 11 starts after all functional phases; some hardening work (backup drills, accessibility, performance tests) is continuous.
@@ -423,7 +439,7 @@ Definition of done:
 
 ### Historical/deferred — Authentication and users (conditional; formerly listed as Phase 6)
 
-This section is preserved from the earlier roadmap, where authentication was labelled Phase 6. Phase 6 is now the completed business-planning documentation phase. If Q-04/AQ-05 approves login and roles, this deferred work must be renumbered and sequenced according to the modules it affects.
+This section is preserved from the earlier roadmap, where authentication was labelled Phase 6. Phase 6 is now the completed business-planning documentation phase. Q-04/AQ-05 were resolved in favour of four local roles; the deferred work was renumbered as Phase 8A (specification) and Phase 8B (implementation). The checklist below is historical planning text and is superseded by the Phase 8B implementation record.
 
 **Only if Q-04 requires it.** If single-user, record "not applicable" and skip.
 
@@ -445,13 +461,13 @@ DoD:
 
 **Gate:** security review of the auth model.
 
-### First implementation candidate (pending owner approval) — Business master data
+### First implementation candidate — Business master data (partially implemented)
 
-This content was formerly labelled Phase 7 in this roadmap. It is preserved as the next business implementation candidate after the Phase 7 approval gate. It is not approved and must be revised if the owner approves a different first module.
+This content was formerly labelled Phase 7 in this roadmap. It is preserved as the next business implementation candidate after the Phase 7 approval gate. The Phase 9 prompt (2026-11-23) implemented the approved **Customers & Suppliers** slice only: required `name`; optional phone/email/address/contact_person/notes/is_active; duplicate warning with explicit confirmation; activate/deactivate; no hard delete; service-layer authz/audit; migration `0005_party_master`. Units/categories/products-services/business settings master data remain pending owner approval and implementation.
 
 Goal: the reference data needed by transactions.
 
-Prerequisite: owner approval of the specific field list, duplicate policy, and archival behavior from `OPEN_DECISIONS.md` (`B6-09`, `B6-13`, `B6-11`) and the applicable rules in `BUSINESS_RULES.md`.
+Prerequisite for remaining master-data slices: owner approval of the specific field list, duplicate policy, and archival behavior from `OPEN_DECISIONS.md` (`B6-09`, `B6-13` catalogue portion, `B6-11`) and the applicable rules in `BUSINESS_RULES.md`.
 
 Work (one vertical slice at a time):
 

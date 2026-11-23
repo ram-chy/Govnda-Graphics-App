@@ -3,21 +3,33 @@
 | Field | Value |
 | --- | --- |
 | Document | DATABASE_SCHEMA.md |
-| Version | 1.5 |
-| Date | 2026-11-20; Phase 7B-1 audit retention corrected 2026-11-21 |
-| Status | Phase 7B implemented — profile, version, and audit tables; all other business tables remain proposed |
+| Version | 1.6 |
+| Date | 2026-11-20; Phase 7B-1 audit retention corrected 2026-11-21; Phase 8B authentication added 2026-11-23 |
+| Status | Phase 7B profile/version/audit tables and Phase 8B authentication tables implemented; all other business tables remain proposed |
 | Related | BLUEPRINT.md, ARCHITECTURE.md, BACKUP_STRATEGY.md |
-| Schema baseline | `0001_baseline`, `0002_business_profile`, and implemented `0003_business_profile_requirements` |
+| Schema baseline | `0001_baseline`, `0002_business_profile`, `0003_business_profile_requirements`, and implemented `0004_authentication` |
 
-> **Important:** The implemented profile slice now comprises `business_profile`, `business_profile_versions`, and `audit_events`. Phase 2 created only Alembic's `alembic_version` table plus the SQLite file-identity PRAGMAs; Phase 7A added `business_profile`; Phase 7B corrects it with migration `0003_business_profile_requirements`. Every other business table in this document is **proposed**. Tables for unconfirmed workflows are marked **[PROVISIONAL]** and must not be created during initialization.
+> **Important:** The implemented profile slice now comprises `business_profile`, `business_profile_versions`, and `audit_events`. Phase 2 created only Alembic's `alembic_version` table plus the SQLite file-identity PRAGMAs; Phase 7A added `business_profile`; Phase 7B corrects it with migration `0003_business_profile_requirements`; Phase 8B adds the `roles`, `users`, and `login_throttles` authentication tables in migration `0004_authentication`. Every other business table in this document is **proposed**. Tables for unconfirmed workflows are marked **[PROVISIONAL]** and must not be created during initialization.
 
 ## Phase 7B implemented schema correction (authoritative)
 
-Migration `0003_business_profile_requirements` adds `secondary_phone`, `logo_reference`, and `version_number` to `business_profile`, creates `business_profile_versions` and `audit_events`, adds immutability triggers, and backfills the existing active profile with version 1 and one audit event without changing its values. The application head is `0003_business_profile_requirements`.
+Migration `0003_business_profile_requirements` adds `secondary_phone`, `logo_reference`, and `version_number` to `business_profile`, creates `business_profile_versions` and `audit_events`, adds immutability triggers, and backfills the existing active profile with version 1 and one audit event without changing its values. The application head is now `0004_authentication`; the Phase 7B head was `0003_business_profile_requirements`.
 
 `logo_reference` stores a safe relative reference under `Logos/`, never an absolute path. Version rows retain mandatory/optional field values and the effective logo reference. The implemented `audit_events` table stores `id`, `event_type`, `entity_type`, `entity_id`, `actor`, `created_at`, and `payload`. It has no foreign keys, no expiry or retention column, and no cascade path. Audit rows use actor `system/unauthenticated`, are retained indefinitely under the owner-approved Phase 7B-1 policy, and have no ordinary UI.
 
 Append-only behavior is enforced at three layers: `AuditEventRepository` exposes only `add()`/`list()`; immutable ORM records are rejected on update/delete before flush; and `BEFORE UPDATE`/`BEFORE DELETE` SQLite triggers abort direct SQL changes. There is no automatic audit cleanup, scheduled purge, or retention-based row deletion. Verified restore checks audit structure and appends any audit events written after the selected backup before replacing the live file, so history is neither omitted nor renumbered. `MigrationManager.downgrade()` refuses any downgrade that would drop the audit table while audit rows exist. Backup sidecars use optional `managed_assets` entries for logo bytes with size and SHA-256 verification. Historical Phase 7A statements saying no history, logo path, or audit table existed are superseded for this slice.
+
+## Phase 8B implemented authentication schema (authoritative)
+
+Migration `0004_authentication` adds three tables and changes no existing table, Business Profile record, or historical audit row:
+
+| Table | Columns | Constraints and purpose |
+| --- | --- | --- |
+| `roles` | `key TEXT PK`, `display_name TEXT NOT NULL` | Four reference rows only: `owner_admin`, `operator`, `accountant_reviewer`, `viewer`. No role is added at runtime and no user is seeded. |
+| `users` | `id INTEGER PK`, `username`, `username_key`, `email`, `password_hash`, `is_active`, `role_key FK → roles.key`, `created_at`, `updated_at` | `username_key` is unique for case-insensitive identity; `is_active` is a 0/1 check; `role_key` is constrained to the four approved keys; indexes cover role and active status. `password_hash` stores only a self-describing Argon2id or scrypt PHC-style value. |
+| `login_throttles` | `username_key TEXT PK`, `failed_count`, `first_failed_at`, `cooldown_until` | Persists generic failed-login state across restarts; a non-negative count and optional ISO-8601 cooldown timestamp enforce the five-attempt/15-minute policy. |
+
+There is deliberately **no `user_roles` table**: each `users` row has one `role_key`. There is no session table — the session is memory-only and nothing about authentication is stored in `QSettings`. A downgrade from `0004_authentication` is refused when user accounts or audit rows exist, protecting both local identities and append-only history.
 
 ## 1. Design principles
 
@@ -82,13 +94,16 @@ class Money:
     minor: int
     currency: str  # ISO 4217, e.g. "INR"
 
+
 @dataclass(frozen=True)
 class Quantity:
     milli: int
 
+
 @dataclass(frozen=True)
 class UnitPrice:
     e4: int
+
 
 @dataclass(frozen=True)
 class Rate:
@@ -157,16 +172,18 @@ line_total_minor = line_net_minor + line_tax_minor
 | `audit_logs` | Append-only record of significant actions | Proposed |
 | `attachments` | Metadata for files stored under `Attachments\` | Proposed |
 | `backup_runs` | Backup history mirrored for UI; sidecar metadata remains authoritative if DB is lost | Proposed |
-| `users` | Login identities | **Conditional — Q-04** |
-| `roles` | Role definitions | **Conditional — Q-04** |
-| `user_roles` | User/role assignment | **Conditional — Q-04** |
+| `users` | Local login identities; one approved `role_key` per account | Implemented in Phase 8B |
+| `roles` | Four approved role reference rows | Implemented in Phase 8B |
+| `login_throttles` | Persistent failed-login/cooldown state | Implemented in Phase 8B |
+| `user_roles` | User/role assignment | Not used — one role per `users.role_key` |
 
 ### 6.2 Master data
 
 | Table | Purpose | Status |
 | --- | --- | --- |
-| `customers` | Customer records and credit terms | Proposed |
-| `suppliers` | Supplier records | Proposed |
+| `parties` | Customer/Supplier basic master records (shared table, `party_kind`) | Implemented in Phase 9 (2026-11-23) |
+| `customers` | Customer records and credit terms (future transaction-facing extension) | Proposed; Phase 9 uses `parties` for basic master slice |
+| `suppliers` | Supplier records (future transaction-facing extension) | Proposed; Phase 9 uses `parties` for basic master slice |
 | `product_categories` | Hierarchical categories | Proposed |
 | `units` | Unit of measure and decimal precision | Proposed |
 | `products` | Goods/services, pricing, tax defaults | Proposed |
@@ -270,9 +287,33 @@ A single-row constraint is enforced with `CHECK (id = 1)` plus service-level val
 
 - Append-only: no UPDATE/DELETE from application code.
 - Indexes: `(occurred_at)`, `(entity_type, entity_id)`, `(actor_user_id, occurred_at)`.
-- Retention: indefinite (owner-approved in Phase 7B-1; general audit visibility remains open under Q-22).
+- Retention: indefinite (owner-approved in Phase 7B-1). Audit visibility resolved under Q-22 (2026-11-22): Owner/Admin-only view and audited export; all significant business, security, and admin events recorded; existing historical rows unchanged.
 
-### 7.4 `customers` (suppliers mirror the same shape)
+### 7.4 `parties` (implemented, Phase 9 Customer & Supplier Management)
+
+Phase 9 implements a shared basic master table for customers and suppliers. Financial fields (opening balance, credit limit, tax, ledger) are intentionally out of scope.
+
+| Column | Type | Constraints |
+| --- | --- | --- |
+| `id` | INTEGER | PK AUTOINCREMENT |
+| `party_kind` | TEXT | NOT NULL, CHECK IN (`customer`,`supplier`) |
+| `name` | TEXT | NOT NULL, trimmed non-empty |
+| `name_key` | TEXT | NOT NULL, normalized case-insensitive name key |
+| `phone` | TEXT | NOT NULL DEFAULT `''` |
+| `email` | TEXT | NOT NULL DEFAULT `''` |
+| `address` | TEXT | NOT NULL DEFAULT `''` |
+| `contact_person` | TEXT | NOT NULL DEFAULT `''` |
+| `notes` | TEXT | NOT NULL DEFAULT `''` |
+| `is_active` | BOOLEAN/INTEGER | NOT NULL DEFAULT 1, CHECK IN (0,1) |
+| `created_at` | TEXT | NOT NULL, ISO-8601 UTC |
+| `updated_at` | TEXT | NOT NULL, ISO-8601 UTC |
+
+- Indexes: `(party_kind, name_key)`, `(party_kind, phone)`, `(party_kind, is_active)`.
+- Duplicate policy (owner-approved 2026-11-23): warn on case-insensitive normalized name match; also warn on matching phone for existing active record when phone provided; save allowed only after explicit confirmation.
+- Lifecycle: activate/deactivate supported; hard delete not exposed in normal UI; referenced records must never be unsafely deleted.
+- Audit: append-only `audit_events` rows with `entity_type='party'` and event types `party.created`, `party.updated`, `party.activated`, `party.deactivated`.
+
+### 7.4a `customers` (proposed future transaction shape; suppliers mirror)
 
 | Column | Type | Constraints |
 | --- | --- | --- |
@@ -293,6 +334,7 @@ A single-row constraint is enforced with `CHECK (id = 1)` plus service-level val
 - Indexes: `(name)`, `(phone)`, `(is_active)`.
 - `code` generation rule is **[OPEN]** (manual vs automatic).
 - Balances are derived from invoices/payments/opening entries, not stored, unless performance later requires a cache.
+- Future transaction modules must reconcile this proposed shape with the implemented `parties` table before implementation.
 
 ### 7.5 `products`
 

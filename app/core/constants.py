@@ -120,3 +120,9 @@ CATCH_UP_DELAY_MS = 15_000
 STATUS_MESSAGE_TIMEOUT_MS = 6_000
 DATABASE_MESSAGE_TIMEOUT_MS = 8_000
 TOAST_DURATION_MS = 4_000
+
+# Session security (Phase 8B). The approved default is 15 minutes. The approved
+# specification requires a positive duration but leaves range limits open, so
+# validation accepts any positive integer rather than inventing a ceiling.
+DEFAULT_IDLE_TIMEOUT_SECONDS = 15 * 60
+IDLE_TIMEOUT_MINIMUM_SECONDS = 1

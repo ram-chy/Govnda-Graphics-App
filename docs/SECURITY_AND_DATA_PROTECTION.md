@@ -3,10 +3,16 @@
 | Field | Value |
 | --- | --- |
 | Document | SECURITY_AND_DATA_PROTECTION.md |
-| Version | 1.4 |
-| Date | 2026-11-14; Phase 7B controls added 2026-11-20; Phase 7B-1 audit retention corrected 2026-11-21 |
-| Status | Phase 3 setup/location, Phase 4 backup/restore, Phase 7B profile/logo, and Phase 7B-1 audit-retention controls implemented |
+| Version | 1.5 |
+| Date | 2026-11-14; Phase 7B controls added 2026-11-20; Phase 7B-1 audit retention corrected 2026-11-21; Phase 8B authentication added 2026-11-23 |
+| Status | Phase 3 setup/location, Phase 4 backup/restore, Phase 7B profile/logo, Phase 7B-1 audit-retention, and Phase 8B authentication/authorization controls implemented |
 | Related | ARCHITECTURE.md, BACKUP_STRATEGY.md, DATABASE_SCHEMA.md |
+
+## Phase 8B authentication controls (authoritative)
+
+Local accounts are stored in the business database through migration `0004_authentication`. Passwords are hashed with Argon2id (`argon2-cffi`, `t=3`, `m=65536 KiB`, `p=1`, `hash_len=32`, 16-byte salt, PHC string) with a self-describing scrypt fallback (`N=2**17`, `r=8`, `p=1`, `dklen=32`, 16-byte salt, explicit `maxmem=140000000`). Plaintext passwords, hashes, salts, and reset secrets are never logged, displayed, persisted separately, or written to audit payloads. Verification is constant-time and hashing fails closed if no approved algorithm is available.
+
+Five failed login attempts trigger a 15-minute cooldown persisted in `login_throttles`; failure messages are generic and do not disclose whether a username exists. Authorization is enforced at the application-service boundary through `AuthorizationService.require(...)`, with role/status re-read from the live database on every check; UI hiding is advisory only. Only `A`-marked Phase 8A permissions are implemented and `P`/`O` permissions are denied by default. The session is memory-only and idle-locks after a configurable timeout. Authentication, account lifecycle, password, access-denied, and administrative actions append audit events with a non-secret authenticated actor; no audit row is ever edited or deleted. Restore/relocation/schedule and Business Profile services resolve authentication through the composition root so audit writes always follow the live database.
 
 ## Phase 7B protection controls (authoritative)
 
@@ -54,7 +60,7 @@ The application can reduce accidental loss and make tampering harder, but it **c
 | T-08 | Path traversal / unsafe file write | Attachment names, export paths | Overwrite/escape | Canonical path validation, generated names, allowlists |
 | T-09 | Excel formula injection | Customer/product names in exports | Code execution on open | Prefix dangerous leading characters, escape |
 | T-10 | Backup tampering | Local user edits backup | Restore wrong/corrupt data | SHA-256 sidecar, integrity check, audit record |
-| T-11 | Unauthorized app use | Shared unlocked PC | Confidentiality/integrity | Optional login/idle lock (Q-04), Windows lock |
+| T-11 | Unauthorized app use | Shared unlocked PC | Confidentiality/integrity | Implemented local login/idle lock (Phase 8B), Windows lock |
 | T-12 | Supply-chain compromise | Malicious dependency/build | Full compromise | Pinned versions, review, trusted sources, signed release |
 | T-13 | Log leakage | PII/financial data in logs | Confidentiality loss | Logging policy and review |
 | T-14 | Wrong database attached | User picks another business DB | Data confusion/loss | `application_id`, business-profile identity check |
@@ -120,23 +126,23 @@ At setup and relocation, verify:
 - The app cannot verify BitLocker reliably in all editions; where it can, show a recommendation, not a hard block.
 - A drive letter (`D:`) is not encryption and not a separate physical disk.
 
-## 6. Application-level access control (conditional)
+## 6. Application-level access control (Phase 8A planning record)
 
-Authentication is **not invented**. It is conditional on Q-04. If approved:
+This section preserves the original conditional Phase 8A planning text. Q-04 is resolved and the approved parts were implemented in Phase 8B; where it conflicts with the Phase 8B section at the top of this document, the Phase 8B section governs.
 
 - Use per-user accounts with a unique username and a salted password hash.
-- Preferred algorithm: **Argon2id** (`argon2-cffi`) with a calibrated work factor; fallback: `hashlib.scrypt` with documented parameters if adding a dependency is rejected.
+- Owner-approved algorithm (2026-11-22): **Argon2id** (`argon2-cffi`) with a calibrated work factor; fallback: `hashlib.scrypt` if adding a dependency is rejected. Final parameter review completed 2026-11-22: Argon2id values accepted and corrected scrypt fallback `N=2**17, r=8, p=1` owner-approved (`AUTHENTICATION_SPECIFICATION.md` §3.1.1).
 - Never store plaintext, reversible encryption, MD5, SHA-1, or unsalted hashes.
-- Enforce a minimum password length and reject common passwords; do not impose arbitrary complexity rules.
-- Session lives in memory; idle lock after a configurable period; re-authentication for destructive actions (restore, relocation, user management).
-- Roles are explicit and few: e.g., Owner/Admin, Operator, Viewer. Final role names and permissions are Q-04.
+- Enforce the owner-approved minimum length of 8 with an uppercase letter, a lowercase letter, and a digit.
+- Session lives in memory with a configurable idle lock. Sensitive actions require the approved permission through the service layer.
+- The four approved roles are Owner/Admin, Operator, Accountant/Reviewer, and Viewer.
 - Permission checks occur in application services, not only in the UI.
-- The first admin is created by the setup wizard; no default password.
+- The first Owner/Admin is created by the explicit first-run dialog; no default or seeded password.
 - Password reset by a local admin is a controlled action that is audited; it does not reveal the old password.
 - If the only admin password is lost, recovery requires access to the database/backups and is documented as a manual, high-risk procedure.
 - Do not implement "security questions" or email-based reset (no server).
 
-If single-user is chosen, the app relies on the Windows account and should still offer an optional idle lock screen (decision pending).
+The single-user/no-login alternative was not chosen; local accounts and the idle lock are implemented.
 
 ## 7. Application build and update security
 
@@ -351,15 +357,15 @@ See BACKUP_STRATEGY.md for the operational detail.
 
 | ID | Decision | Default until answered |
 | --- | --- | --- |
-| Q-04 | Single user vs multi-user auth/roles | Single user, no login |
+| Q-04 | Single user vs multi-user auth/roles | Resolved 2026-11-22: four local roles with login; implemented in Phase 8B |
 | Q-18 | Encrypt database and backups? | No; recommend BitLocker + offline copy |
 | Q-19 | Code signing certificate | No; document SmartScreen |
 | Q-21 | Off-site backup requirement | Recommend manual periodic copy |
-| Q-22 | Audit retention and visibility | Keep indefinitely; owner-visible |
+| Q-22 | Audit retention and visibility | Keep indefinitely; Owner/Admin-only view and audited export; all significant business, security, and admin events recorded (resolved 2026-11-22) |
 | Q-24 | Attachment types and size limits | PDF/JPG/PNG, 10 MB |
-| SQ-01 | Idle-lock when no login is used? | Off until approved |
+| SQ-01 | Idle-lock when no login is used? | Resolved: idle lock implemented with login in Phase 8B |
 | SQ-02 | Support-bundle export feature? | Not in v1 |
-| SQ-03 | Password reset recovery procedure (if auth) | Manual, documented, audited |
+| SQ-03 | Password reset recovery procedure (if auth) | Resolved in Phase 8B: audited Owner/Admin reset; no email/OTP recovery |
 
 ## 18. Phase 2 database protection record (2026-11-13)
 

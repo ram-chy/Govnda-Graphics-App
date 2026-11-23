@@ -57,6 +57,10 @@ class AppConfig:
     backup_time: str = constants.DEFAULT_BACKUP_TIME
     backup_retention_days: int = constants.DEFAULT_BACKUP_RETENTION_DAYS
     backup_keep_minimum: int = constants.DEFAULT_BACKUP_KEEP_MINIMUM
+    # Session security (Phase 8B). Stored outside the business database so no
+    # business file is modified by preference changes. Only positivity is
+    # validated because the approved specification leaves range limits open.
+    idle_timeout_seconds: int = constants.DEFAULT_IDLE_TIMEOUT_SECONDS
 
     @property
     def app_name(self) -> str:
@@ -110,6 +114,12 @@ class AppConfig:
                 self.backup_keep_minimum if keep_minimum is None else keep_minimum
             ),
         )
+        updated.validate()
+        return updated
+
+    def with_idle_timeout(self, seconds: int) -> AppConfig:
+        """Return a validated copy with a new in-memory session timeout."""
+        updated = replace(self, idle_timeout_seconds=seconds)
         updated.validate()
         return updated
 
@@ -204,6 +214,14 @@ class AppConfig:
                 f"{constants.BACKUP_KEEP_MINIMUM_FLOOR} to "
                 f"{constants.BACKUP_KEEP_MINIMUM_CEILING}"
             )
+        if (
+            isinstance(self.idle_timeout_seconds, bool)
+            or not isinstance(self.idle_timeout_seconds, int)
+            or self.idle_timeout_seconds < constants.IDLE_TIMEOUT_MINIMUM_SECONDS
+        ):
+            raise ConfigurationError(
+                "idle_timeout_seconds must be a positive integer number of seconds"
+            )
 
 
 def _read_field(data: Mapping[str, Any], key: str, default: Any) -> Any:
@@ -240,9 +258,7 @@ def _config_from_mapping(data: Mapping[str, Any]) -> AppConfig:
     config = AppConfig(
         schema_version=_read_field(data, "schema_version", constants.CONFIG_SCHEMA_VERSION),
         currency_code=_read_field(data, "currency_code", constants.DEFAULT_CURRENCY_CODE),
-        currency_symbol=_read_field(
-            data, "currency_symbol", constants.DEFAULT_CURRENCY_SYMBOL
-        ),
+        currency_symbol=_read_field(data, "currency_symbol", constants.DEFAULT_CURRENCY_SYMBOL),
         currency_decimal_places=_read_field(
             data, "currency_decimal_places", constants.DEFAULT_CURRENCY_DECIMAL_PLACES
         ),
@@ -253,15 +269,16 @@ def _config_from_mapping(data: Mapping[str, Any]) -> AppConfig:
         log_level=_read_field(data, "log_level", constants.DEFAULT_LOG_LEVEL),
         data_root=_read_optional_str(data, "data_root"),
         database_path=_read_optional_str(data, "database_path"),
-        backup_enabled=_read_bool(
-            data, "backup_enabled", constants.DEFAULT_BACKUP_ENABLED
-        ),
+        backup_enabled=_read_bool(data, "backup_enabled", constants.DEFAULT_BACKUP_ENABLED),
         backup_time=_read_field(data, "backup_time", constants.DEFAULT_BACKUP_TIME),
         backup_retention_days=_read_field(
             data, "backup_retention_days", constants.DEFAULT_BACKUP_RETENTION_DAYS
         ),
         backup_keep_minimum=_read_field(
             data, "backup_keep_minimum", constants.DEFAULT_BACKUP_KEEP_MINIMUM
+        ),
+        idle_timeout_seconds=_read_field(
+            data, "idle_timeout_seconds", constants.DEFAULT_IDLE_TIMEOUT_SECONDS
         ),
     )
     config.validate()
@@ -365,6 +382,7 @@ class ConfigService:
             "backup_time": config.backup_time,
             "backup_retention_days": config.backup_retention_days,
             "backup_keep_minimum": config.backup_keep_minimum,
+            "idle_timeout_seconds": config.idle_timeout_seconds,
         }
 
         try:
@@ -403,8 +421,7 @@ class ConfigService:
         counter = 1
         while target.exists():
             target = self._config_path.with_name(
-                f"{self._config_path.stem}.corrupt-{timestamp}-{counter}"
-                f"{self._config_path.suffix}"
+                f"{self._config_path.stem}.corrupt-{timestamp}-{counter}{self._config_path.suffix}"
             )
             counter += 1
         try:

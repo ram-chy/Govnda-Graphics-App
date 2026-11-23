@@ -19,6 +19,7 @@ from pathlib import Path
 from app.core import constants
 from app.core.config import AppConfig, ConfigService
 from app.core.exceptions import RelocationError
+from app.domain.auth import AdminEventType, PermissionKey
 from app.domain.backup import BackupType
 from app.infrastructure.backup.hashing import sha256_file
 from app.infrastructure.backup.lock import OperationLock
@@ -46,6 +47,7 @@ from app.infrastructure.filesystem.validation import (
     DataLocationValidator,
     LocationValidationResult,
 )
+from app.services.auth_services import AuthServices
 from app.services.backup_service import BackupResult, BackupService, ProgressCallback
 from app.services.database_runtime import DatabaseRuntime
 
@@ -83,6 +85,7 @@ class RelocationService:
         replace_file: Callable[[Path, Path], object] = os.replace,
         verifier: Callable[[Path], DatabaseVerification] = verify_database_file,
         reopen: Callable[[Path], Database] | None = None,
+        auth_services: AuthServices | None = None,
     ) -> None:
         self._config_service = config_service
         self._runtime = runtime
@@ -95,6 +98,7 @@ class RelocationService:
         self._replace = replace_file
         self._verifier = verifier
         self._reopen = reopen or _open_and_verify
+        self._auth_services = auth_services
 
     def validate(self, data_root: str | Path | None) -> LocationValidationResult:
         return self._validator.validate(data_root)
@@ -105,8 +109,20 @@ class RelocationService:
         *,
         progress: ProgressCallback | None = None,
     ) -> RelocationResult:
+        self._require_permission(PermissionKey.DATABASE_RELOCATE)
         with self._lock:
-            return self._relocate(data_root, progress=progress)
+            result = self._relocate(data_root, progress=progress)
+        self._record_sensitive_event(
+            event_type=AdminEventType.DATABASE_RELOCATED,
+            entity_id=str(result.new_database_path),
+            payload={
+                "old_data_root": str(result.old_data_root),
+                "old_database_path": str(result.old_database_path),
+                "new_data_root": str(result.new_data_root),
+                "new_database_path": str(result.new_database_path),
+            },
+        )
+        return result
 
     def _relocate(
         self,
@@ -162,8 +178,7 @@ class RelocationService:
             raise RelocationError(
                 f"current database is missing: {old_database}",
                 user_message=(
-                    f"The current database file does not exist ({old_database}). Nothing was "
-                    "moved."
+                    f"The current database file does not exist ({old_database}). Nothing was moved."
                 ),
             )
 
@@ -337,9 +352,7 @@ class RelocationService:
             if scaffold is not None:
                 self._scaffolder.cleanup(scaffold)
             marker.clear()
-            self._state.record_failure(
-                f"relocation failed: {exc}", when=started
-            )
+            self._state.record_failure(f"relocation failed: {exc}", when=started)
             self._state.write_last_error(f"relocation failed: {exc}", when=started)
             logger.error("Relocation failed: %s", exc, exc_info=True)
             raise RelocationError(
@@ -349,6 +362,23 @@ class RelocationService:
                     "kept, and the old location remains usable."
                 ),
             ) from exc
+
+    def _require_permission(self, permission: PermissionKey) -> None:
+        if self._auth_services is not None:
+            self._auth_services.authorization.require(permission)
+
+    def _record_sensitive_event(
+        self, *, event_type: str, entity_id: str, payload: dict[str, object]
+    ) -> None:
+        if self._auth_services is None:
+            return
+        self._auth_services.audit.record(
+            event_type=event_type,
+            entity_type="database",
+            entity_id=entity_id,
+            actor=self._auth_services.session.actor,
+            payload=payload,
+        )
 
     def _confirm_safety_backup(self, result: BackupResult) -> None:
         verification = self._verifier(result.path)

@@ -47,8 +47,7 @@ def test_evaluate_migration_state_policy() -> None:
     )
     assert evaluate_migration_state(None, "0001_baseline", known) is MigrationState.NOT_INITIALIZED
     assert (
-        evaluate_migration_state("0000_old", "0001_baseline", known)
-        is MigrationState.NEWER_SCHEMA
+        evaluate_migration_state("0000_old", "0001_baseline", known) is MigrationState.NEWER_SCHEMA
     )
 
     newer_known = {"0000_old", "0001_baseline"}
@@ -70,6 +69,8 @@ def test_default_migrations_directory_contains_the_baseline() -> None:
     assert (directory / "versions" / "0001_baseline.py").is_file()
     assert (directory / "versions" / "0002_business_profile.py").is_file()
     assert (directory / "versions" / "0003_business_profile_requirements.py").is_file()
+    assert (directory / "versions" / "0004_authentication.py").is_file()
+    assert (directory / "versions" / "0005_party_master.py").is_file()
 
 
 def test_create_database_applies_the_baseline_identity(
@@ -86,6 +87,10 @@ def test_migrations_create_the_business_profile_table(initialized_database: Data
         "business_profile",
         "business_profile_versions",
         "audit_events",
+        "roles",
+        "users",
+        "login_throttles",
+        "parties",
     }
 
 
@@ -107,10 +112,14 @@ def test_history_lists_the_approved_revisions(initialized_database: Database) ->
         "0001_baseline",
         "0002_business_profile",
         "0003_business_profile_requirements",
+        "0004_authentication",
+        "0005_party_master",
     }
     assert revisions["0001_baseline"] is None
     assert revisions["0002_business_profile"] == "0001_baseline"
     assert revisions["0003_business_profile_requirements"] == "0002_business_profile"
+    assert revisions["0004_authentication"] == "0003_business_profile_requirements"
+    assert revisions["0005_party_master"] == "0004_authentication"
 
 
 def test_create_database_refuses_an_existing_file(database_config: DatabaseConfig) -> None:
@@ -209,9 +218,7 @@ def test_downgrade_to_base_removes_the_revision_and_identity(
     assert read_application_id(initialized_database) == 0
     assert _pragma(initialized_database, "PRAGMA user_version") == 0
     with initialized_database.engine.connect() as connection:
-        remaining = connection.exec_driver_sql(
-            "SELECT COUNT(*) FROM alembic_version"
-        ).scalar_one()
+        remaining = connection.exec_driver_sql("SELECT COUNT(*) FROM alembic_version").scalar_one()
     assert remaining == 0
 
 

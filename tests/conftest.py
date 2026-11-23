@@ -21,6 +21,7 @@ from app.core.logging_config import HANDLER_MARKER
 from app.infrastructure.database.config import DatabaseConfig
 from app.infrastructure.database.engine import Database
 from app.infrastructure.database.migrations import MigrationManager
+from app.services.auth_services import AuthServices
 
 PNG_LOGO_BYTES = base64.b64decode(
     "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAADElEQVR4nGP4z8AAAAMBAQDJ/pLvAAAAAElFTkSuQmCC"
@@ -57,6 +58,13 @@ def initialized_database(database_config: DatabaseConfig) -> Database:
         yield database
     finally:
         database.shutdown()
+
+
+@pytest.fixture
+def auth_services(initialized_database: Database) -> AuthServices:
+    """Authentication services bound only to an isolated temporary database."""
+
+    return AuthServices.create(initialized_database)
 
 
 @pytest.fixture

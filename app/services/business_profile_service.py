@@ -20,6 +20,7 @@ from app.domain.audit import (
     AuditEvent,
     ProfileAuditEventType,
 )
+from app.domain.auth import PermissionKey
 from app.domain.business_profile import (
     PROFILE_FIELDS,
     BusinessProfile,
@@ -36,6 +37,7 @@ from app.infrastructure.database.business_profile_repository import (
 )
 from app.infrastructure.database.engine import Database
 from app.infrastructure.filesystem.layout import DataRootLayout
+from app.services.auth_services import AuthServices
 from app.services.database_runtime import DatabaseRuntime
 from app.services.logo_storage_service import LogoStorageService, StoredLogo
 
@@ -72,18 +74,27 @@ class BusinessProfileService:
         logo_storage: LogoStorageService,
         *,
         clock: Clock | None = None,
+        auth_services: AuthServices | None = None,
     ) -> None:
         self._database = database
         self._logo_storage = logo_storage
         self._clock = clock
+        self._auth_services = auth_services
+
+    def _actor(self) -> str:
+        if self._auth_services is not None and self._auth_services.session.identity is not None:
+            return self._auth_services.session.actor
+        return UNAUTHENTICATED_ACTOR
+
+    def _require(self, permission: PermissionKey) -> None:
+        if self._auth_services is not None:
+            self._auth_services.authorization.require(permission)
 
     def load(self) -> LoadProfileResult:
         with self._database.unit_of_work() as work:
             record = BusinessProfileRepository(work.session, clock=self._clock).load()
             profile = to_domain(record) if record is not None else None
-            versions = BusinessProfileVersionRepository(
-                work.session, clock=self._clock
-            ).list()
+            versions = BusinessProfileVersionRepository(work.session, clock=self._clock).list()
         return LoadProfileResult(
             profile=profile,
             completion=assess_completion(profile),
@@ -98,6 +109,7 @@ class BusinessProfileService:
             return BusinessProfileVersionRepository(work.session, clock=self._clock).list()
 
     def audit_events(self) -> tuple[AuditEvent, ...]:
+        self._require(PermissionKey.AUDIT_VIEW)
         with self._database.unit_of_work() as work:
             return AuditEventRepository(work.session, clock=self._clock).list()
 
@@ -110,7 +122,7 @@ class BusinessProfileService:
             event_type=ProfileAuditEventType.HISTORY_VIEWED,
             entity_type=PROFILE_ENTITY_TYPE,
             entity_id=str(version_number),
-            actor=UNAUTHENTICATED_ACTOR,
+            actor=self._actor(),
             created_at=timestamp,
             payload=json.dumps({"version": version_number}, separators=(",", ":")),
         )
@@ -118,18 +130,13 @@ class BusinessProfileService:
             AuditEventRepository(work.session, clock=self._clock).add(event)
             work.commit()
 
-    def save(
-        self, draft: BusinessProfile, *, logo_path: Path | None = None
-    ) -> SaveProfileResult:
+    def save(self, draft: BusinessProfile, *, logo_path: Path | None = None) -> SaveProfileResult:
+        self._require(PermissionKey.SETTINGS_APPLICATION_UPDATE)
         profile = draft.normalized()
         stored_logo: StoredLogo | None = None
         try:
             current = self._load_current()
-            if (
-                logo_path is None
-                and not profile.logo_reference
-                and current is not None
-            ):
+            if logo_path is None and not profile.logo_reference and current is not None:
                 profile = replace(profile, logo_reference=current.logo_reference)
             if logo_path is not None:
                 next_number = self._next_version_number(current)
@@ -150,9 +157,7 @@ class BusinessProfileService:
 
             next_number = self._next_version_number(current)
             profile = replace(profile, version_number=next_number)
-            versions, saved = self._commit_profile(
-                profile, changed_fields, logo_path is not None
-            )
+            versions, saved = self._commit_profile(profile, changed_fields, logo_path is not None)
         except AppError as exc:
             if stored_logo is not None:
                 self._logo_storage.discard(stored_logo.absolute_path)
@@ -222,7 +227,7 @@ class BusinessProfileService:
                 ),
                 entity_type=PROFILE_ENTITY_TYPE,
                 entity_id="1",
-                actor=UNAUTHENTICATED_ACTOR,
+                actor=self._actor(),
                 created_at=timestamp,
                 payload=payload,
             )
@@ -233,7 +238,7 @@ class BusinessProfileService:
                     event_type=ProfileAuditEventType.LOGO_CHANGED,
                     entity_type=PROFILE_ENTITY_TYPE,
                     entity_id="1",
-                    actor=UNAUTHENTICATED_ACTOR,
+                    actor=self._actor(),
                     created_at=timestamp,
                     payload='{"field":"logo"}',
                 )
@@ -297,10 +302,12 @@ class BusinessProfileServiceFactory:
         runtime: DatabaseRuntime,
         *,
         clock: Clock | None = None,
+        auth_services: AuthServices | None = None,
     ) -> None:
         self._config_service = config_service
         self._runtime = runtime
         self._clock = clock
+        self._auth_services = auth_services
 
     def build(self) -> BusinessProfileService | None:
         database = self._runtime.database
@@ -308,7 +315,9 @@ class BusinessProfileServiceFactory:
         if database is None or not config.data_root:
             return None
         storage = LogoStorageService(DataRootLayout(Path(config.data_root)), clock=self._clock)
-        return BusinessProfileService(database, storage, clock=self._clock)
+        return BusinessProfileService(
+            database, storage, clock=self._clock, auth_services=self._auth_services
+        )
 
 
 def _timestamp() -> str:

@@ -106,3 +106,29 @@ class UpgradeError(AppError):
 
 class ExportError(AppError):
     """A PDF or Excel export failed."""
+
+
+class AuthenticationError(AppError):
+    """Authentication failed or the cooldown policy rejected an attempt."""
+
+
+class AuthorizationError(AppError):
+    """The authenticated actor lacks a required permission or the session is locked."""
+
+    def __init__(
+        self,
+        message: str,
+        *,
+        user_message: str | None = None,
+        permission: str | None = None,
+    ) -> None:
+        super().__init__(message, user_message=user_message)
+        self.permission = permission
+
+
+class SessionError(AppError):
+    """The in-memory session is absent, locked, or cannot perform the operation."""
+
+
+class PasswordHashingError(AppError):
+    """No approved password hashing algorithm can be initialized safely."""

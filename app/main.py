@@ -31,6 +31,7 @@ from app.services.startup_service import (
     StartupMode,
     StartupService,
 )
+from app.ui.dialogs.auth_dialogs import FirstRunDialog, LoginDialog
 from app.ui.dialogs.error_dialog import show_fatal_error
 from app.ui.dialogs.recovery_dialog import RecoveryAction, RecoveryDialog
 from app.ui.dialogs.setup_wizard import SetupWizard
@@ -232,14 +233,12 @@ def run(argv: list[str] | None = None) -> int:
     application = create_application(arguments)
 
     install_excepthook(
-        None if smoke_test else lambda correlation_id, _exc: show_fatal_error(
-            None, correlation_id, log_file
-        )
+        None
+        if smoke_test
+        else lambda correlation_id, _exc: show_fatal_error(None, correlation_id, log_file)
     )
 
-    guard = SingleInstanceGuard(
-        os.environ.get("GOBINDAS_MUTEX_NAME", constants.MUTEX_NAME)
-    )
+    guard = SingleInstanceGuard(os.environ.get("GOBINDAS_MUTEX_NAME", constants.MUTEX_NAME))
     try:
         acquired = guard.acquire()
     except OSError:
@@ -331,6 +330,26 @@ def run(argv: list[str] | None = None) -> int:
                 database=assessment.database,
             )
 
+        if context.auth_services is None:
+            raise RuntimeError("Authentication services are unavailable")
+
+        auth = context.auth_services
+        if smoke_test:
+            # Smoke tests exercise the shell only. Bypassing the interactive gate
+            # avoids writing a known-credential account into the configured DB.
+            logger.info("Smoke test: skipping interactive authentication gate")
+        else:
+            if not auth.authentication.has_accounts():
+                first_run = FirstRunDialog(auth.authentication)
+                if first_run.exec() != QDialog.DialogCode.Accepted:
+                    logger.info("First-run owner setup cancelled")
+                    return 0
+
+            login = LoginDialog(auth.authentication)
+            if login.exec() != QDialog.DialogCode.Accepted:
+                logger.info("Login cancelled; exiting")
+                return 0
+
         _log_startup_context(context)
 
         viewmodel = ShellViewModel(context.config_service, context.config)
@@ -343,6 +362,8 @@ def run(argv: list[str] | None = None) -> int:
             database_runtime=context.runtime,
             workspace_factory=context.workspace_factory,
             business_profile_factory=context.business_profile_factory,
+            party_factory=context.party_factory,
+            auth_services=auth,
         )
         window.show()
 

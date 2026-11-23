@@ -298,7 +298,7 @@ flowchart TD
 - **Failure/cancellation:** Invalid lines, missing required fields, or unapproved rules block posting; posted invoices cannot be silently edited or deleted.
 - **Related workflows:** WF-P-02, WF-P-04, WF-P-05, WF-P-08, WF-P-13, WF-P-14, WF-P-15.
 - **Outputs/reports:** Invoice document, sales register, receivables, customer statement.
-- **Open decisions:** Q-03, Q-08, Q-09, Q-10, Q-13, Q-14, Q-17, `B6-05`, `B6-08`, `B6-10`.
+- **Open decisions:** Q-03, Q-08, Q-09, Q-10, Q-13, Q-14, Q-17, `B6-05`, `B6-08` (`B6-10` resolved 2026-11-22 — no approvals in v1).
 
 ### WF-P-08 — Customer payment receipt
 
@@ -369,7 +369,7 @@ flowchart TD
 - **Failure/cancellation:** Invalid or unapproved expenses block posting; posted expenses cannot be silently deleted.
 - **Related workflows:** WF-P-01, WF-P-09, WF-P-14, WF-P-15, WF-P-16.
 - **Outputs/reports:** Expense register, expense-by-category, profit and loss if approved.
-- **Open decisions:** Q-03, Q-15, Q-24, `B6-10`.
+- **Open decisions:** Q-03, Q-15, Q-24 (`B6-10` resolved 2026-11-22 — no approvals in v1).
 
 ### WF-P-12 — Stock receipt, issue, and adjustment
 
@@ -399,7 +399,7 @@ flowchart TD
 - **Failure/cancellation:** Unapproved corrections must remain blocked; hard-deleting posted documents is prohibited.
 - **Related workflows:** WF-P-07, WF-P-08, WF-P-09, WF-P-10, WF-P-11, WF-P-12.
 - **Outputs/reports:** Void/reversal register, adjusted balances, audit history.
-- **Open decisions:** Q-04, Q-14, Q-22, `B6-10`, `B6-11`.
+- **Open decisions:** Q-04, Q-14, `B6-11` (Q-22 and `B6-10` resolved 2026-11-22).
 
 ### WF-P-14 — Period-end review and reporting
 
@@ -444,7 +444,7 @@ flowchart TD
 - **Failure/cancellation:** Missing audit data must be reported honestly, not reconstructed.
 - **Related workflows:** All proposed business workflows.
 - **Outputs/reports:** Record history and audit export if approved.
-- **Open decisions:** Q-04, Q-22, `B6-11`.
+- **Open decisions:** Q-04, `B6-11` (Q-22 resolved 2026-11-22).
 
 ## 4. Cross-cutting workflow rules
 
