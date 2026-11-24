@@ -546,28 +546,31 @@ DoD:
 
 **Gate:** accountant/owner review of reports and posting rules.
 
-### Phase 10 — Reports and dashboard
+### Phase 10 — Product & Service Catalogue Management
 
-Goal: decision-support views with exports.
+**Status: implemented 2026-11-24; owner review pending.** Report: `Reports/PHASE_10_REPORT.md`.
 
-Work:
+Goal: implement a simple, dependable Product & Service catalogue master-data slice per the approved Phase 10 prompt.
 
-- Report service with parameter objects and DTOs.
-- Report library: sales, purchases, stock, receivables, payables, expenses, P&L, trial balance.
-- PDF/Excel export with filters and consistent totals.
-- Dashboard metrics and charts (PyQtGraph) with empty/error states.
-- Export history/location handling; no silent overwrite.
+Work completed:
+
+- [x] Shared `catalogue_items` table with `kind=product|service` (migration `0006_catalogue_master`).
+- [x] Domain validation: required name; optional description, unit (simple text), default sale price reference (INR paise integer, no tax/discount/stock calculation), is_active.
+- [x] Duplicate warning on case-insensitive normalized name within same kind; save only after explicit confirmation.
+- [x] Activate/deactivate lifecycle; no hard delete.
+- [x] Permissions: `catalogue.view/create/edit`; Owner/Admin + Operator view/create/edit; Accountant/Reviewer + Viewer view-only.
+- [x] Dedicated Products and Services navigation entries and catalogue UI.
+- [x] Append-only audit events: `catalogue.created`, `catalogue.updated`, `catalogue.activated`, `catalogue.deactivated`.
+- [x] Focused tests and full regression suite.
 
 DoD:
 
-- [ ] Every report has defined parameters and a deterministic total.
-- [ ] PDF/Excel totals match the on-screen numbers.
-- [ ] Large exports run off the UI thread with progress/cancel.
-- [ ] Charts handle no-data and large ranges.
-- [ ] Export files are written atomically and never overwrite silently.
-- [ ] Report queries are indexed and measured.
+- [x] Approved catalogue scope implemented; no inventory/stock/variants/barcodes/tax/transactions added.
+- [x] Service-layer authorization enforced; UI not sole enforcement.
+- [x] Migration forward-only; downgrade refuses when catalogue rows exist.
+- [x] Full pytest suite and Ruff pass.
 
-**Gate:** report sign-off by the owner.
+**Note:** Reports and dashboard (previously planned as Phase 10 in earlier roadmap drafts) remain a future phase and require separate owner-approved scope/planning.
 
 ### Phase 11 — Testing, security, and performance hardening
 

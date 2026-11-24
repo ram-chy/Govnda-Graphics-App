@@ -17,16 +17,16 @@ MONO_FONT_FAMILY = '"Cascadia Mono", "Consolas", monospace'
 
 # Typography scale (UI_UX_BLUEPRINT.md §9.3). At most three weights are used on
 # a single screen: 400 (body), 500 (fields), 600 (titles and KPIs).
-FONT_SIZE_BODY = 13
-FONT_SIZE_SMALL = 12
-FONT_SIZE_MICRO = 11
-FONT_SIZE_LABEL = 12
-FONT_SIZE_SECTION = 15
-FONT_SIZE_PAGE = 20
-FONT_SIZE_KPI = 26
-FONT_SIZE_WIZARD_TITLE = 22
-LINE_HEIGHT_BODY = 20
-LINE_HEIGHT_SMALL = 16
+FONT_SIZE_BODY = 15
+FONT_SIZE_SMALL = 14
+FONT_SIZE_MICRO = 13
+FONT_SIZE_LABEL = 14
+FONT_SIZE_SECTION = 17
+FONT_SIZE_PAGE = 22
+FONT_SIZE_KPI = 28
+FONT_SIZE_WIZARD_TITLE = 24
+LINE_HEIGHT_BODY = 22
+LINE_HEIGHT_SMALL = 18
 FONT_WEIGHT_REGULAR = 400
 FONT_WEIGHT_MEDIUM = 500
 FONT_WEIGHT_SEMIBOLD = 600
@@ -67,16 +67,16 @@ class Metrics:
     sidebar_compact_width: int = 48
     sidebar_collapse_threshold: int = 1360
     topbar_height: int = 56
-    statusbar_height: int = 24
+    statusbar_height: int = 28
     window_default_width: int = 1440
     window_default_height: int = 900
     window_minimum_width: int = 1280
     window_minimum_height: int = 720
 
     # Controls and content.
-    control_height: int = 32
-    control_height_compact: int = 28
-    table_row_height: int = 34
+    control_height: int = 36
+    control_height_compact: int = 32
+    table_row_height: int = 38
     icon_size: int = 16
     icon_size_nav: int = 20
     max_form_width: int = 760

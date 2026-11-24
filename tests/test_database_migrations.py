@@ -71,6 +71,7 @@ def test_default_migrations_directory_contains_the_baseline() -> None:
     assert (directory / "versions" / "0003_business_profile_requirements.py").is_file()
     assert (directory / "versions" / "0004_authentication.py").is_file()
     assert (directory / "versions" / "0005_party_master.py").is_file()
+    assert (directory / "versions" / "0006_catalogue_master.py").is_file()
 
 
 def test_create_database_applies_the_baseline_identity(
@@ -91,6 +92,7 @@ def test_migrations_create_the_business_profile_table(initialized_database: Data
         "users",
         "login_throttles",
         "parties",
+        "catalogue_items",
     }
 
 
@@ -114,12 +116,14 @@ def test_history_lists_the_approved_revisions(initialized_database: Database) ->
         "0003_business_profile_requirements",
         "0004_authentication",
         "0005_party_master",
+        "0006_catalogue_master",
     }
     assert revisions["0001_baseline"] is None
     assert revisions["0002_business_profile"] == "0001_baseline"
     assert revisions["0003_business_profile_requirements"] == "0002_business_profile"
     assert revisions["0004_authentication"] == "0003_business_profile_requirements"
     assert revisions["0005_party_master"] == "0004_authentication"
+    assert revisions["0006_catalogue_master"] == "0005_party_master"
 
 
 def test_create_database_refuses_an_existing_file(database_config: DatabaseConfig) -> None:

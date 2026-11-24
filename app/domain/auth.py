@@ -59,6 +59,10 @@ class PermissionKey(StrEnum):
     PARTY_CREATE = "party.create"
     PARTY_EDIT = "party.edit"
 
+    CATALOGUE_VIEW = "catalogue.view"
+    CATALOGUE_CREATE = "catalogue.create"
+    CATALOGUE_EDIT = "catalogue.edit"
+
 
 ROLE_DISPLAY_NAMES: dict[RoleKey, str] = {
     RoleKey.OWNER_ADMIN: "Owner/Admin",
@@ -85,6 +89,9 @@ ROLE_PERMISSIONS: dict[RoleKey, frozenset[PermissionKey]] = {
             PermissionKey.PARTY_VIEW,
             PermissionKey.PARTY_CREATE,
             PermissionKey.PARTY_EDIT,
+            PermissionKey.CATALOGUE_VIEW,
+            PermissionKey.CATALOGUE_CREATE,
+            PermissionKey.CATALOGUE_EDIT,
         }
     ),
     RoleKey.ACCOUNTANT_REVIEWER: frozenset(
@@ -93,6 +100,7 @@ ROLE_PERMISSIONS: dict[RoleKey, frozenset[PermissionKey]] = {
             PermissionKey.UNLOCK,
             PermissionKey.PASSWORD_CHANGE_SELF,
             PermissionKey.PARTY_VIEW,
+            PermissionKey.CATALOGUE_VIEW,
         }
     ),
     RoleKey.VIEWER: frozenset(
@@ -101,6 +109,7 @@ ROLE_PERMISSIONS: dict[RoleKey, frozenset[PermissionKey]] = {
             PermissionKey.UNLOCK,
             PermissionKey.PASSWORD_CHANGE_SELF,
             PermissionKey.PARTY_VIEW,
+            PermissionKey.CATALOGUE_VIEW,
         }
     ),
 }

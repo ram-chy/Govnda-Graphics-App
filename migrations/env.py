@@ -20,6 +20,7 @@ from app.infrastructure.database.models import (
     AuditEventRecord,
     BusinessProfileRecord,
     BusinessProfileVersionRecord,
+    CatalogueItemRecord,
     LoginThrottleRecord,
     PartyRecord,
     RoleRecord,
@@ -33,6 +34,7 @@ assert RoleRecord.__tablename__ == "roles"
 assert UserRecord.__tablename__ == "users"
 assert LoginThrottleRecord.__tablename__ == "login_throttles"
 assert PartyRecord.__tablename__ == "parties"
+assert CatalogueItemRecord.__tablename__ == "catalogue_items"
 
 config = context.config
 

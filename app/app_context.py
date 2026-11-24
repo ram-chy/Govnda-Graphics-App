@@ -25,6 +25,7 @@ from app.infrastructure.database.migrations import verify_database_for_startup
 from app.services.auth_services import AuthServices
 from app.services.backup_workspace import BackupWorkspace, BackupWorkspaceFactory
 from app.services.business_profile_service import BusinessProfileServiceFactory
+from app.services.catalogue_service import CatalogueServiceFactory
 from app.services.database_runtime import DatabaseRuntime
 from app.services.party_service import PartyServiceFactory
 
@@ -47,6 +48,7 @@ class AppContext:
     workspace_factory: BackupWorkspaceFactory = field(init=False)
     business_profile_factory: BusinessProfileServiceFactory = field(init=False)
     party_factory: PartyServiceFactory = field(init=False)
+    catalogue_factory: CatalogueServiceFactory = field(init=False)
     auth_services: AuthServices | None = field(init=False, default=None)
 
     def __post_init__(self) -> None:
@@ -79,6 +81,14 @@ class AppContext:
             self,
             "party_factory",
             PartyServiceFactory(
+                self.runtime,
+                auth_services=auth_services,
+            ),
+        )
+        object.__setattr__(
+            self,
+            "catalogue_factory",
+            CatalogueServiceFactory(
                 self.runtime,
                 auth_services=auth_services,
             ),

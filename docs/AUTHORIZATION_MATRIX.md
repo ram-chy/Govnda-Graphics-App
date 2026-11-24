@@ -100,7 +100,7 @@ Append-only retention is absolute for supported application operations. “Owner
 
 ### 3.6 Future business modules
 
-No create, edit, delete, cancel, approve, post, export, or print permission for sales, purchases, inventory, catalogue, expenses, accounting, or reports is approved by Phase 8A. Those permissions depend on unresolved decisions such as Q-03, Q-06, Q-09, and Q-15 and must be specified per module in a later phase. `B6-10` is resolved (no approvals or thresholds in v1) and grants no approval/posting authority to any role.
+No create, edit, delete, cancel, approve, post, export, or print permission for sales, purchases, inventory, expenses, accounting, or reports is approved by Phase 8A. Catalogue master-data permissions are approved for Phase 10 only as documented in §3.8; no catalogue pricing/stock/tax/transaction behavior is approved. Other module permissions depend on unresolved decisions such as Q-03, Q-06, Q-09, and Q-15 and must be specified per module in a later phase. `B6-10` is resolved (no approvals or thresholds in v1) and grants no approval/posting authority to any role.
 
 ### 3.7 Party master data (Phase 9, owner-approved 2026-11-23)
 
@@ -114,6 +114,19 @@ Applies to Customer and Supplier master records only. No financial amounts, tran
 | `party.delete` | Hard delete customer/supplier | `D` — deactivate only in Phase 9; referenced records must never be unsafely deleted | Not permitted |
 
 Role grants (Phase 9): Owner/Admin=`party.view,party.create,party.edit`; Operator=`party.view,party.create,party.edit`; Accountant/Reviewer=`party.view`; Viewer=`party.view`. Export/print/cancel/approve/post remain denied for all roles.
+
+### 3.8 Catalogue master data (Phase 10, owner-approved 2026-11-24)
+
+Applies to Product and Service catalogue master records only. No inventory/stock, variants, barcodes, multiple price lists, tax, discounts/commissions, transactions, invoices, payments, or accounting behavior is included in Phase 10.
+
+| Permission key | Description | Status | Audit event |
+| --- | --- | --- | --- |
+| `catalogue.view` | View/search/list product and service catalogue records | `A` (2026-11-24) | optional view audit not required |
+| `catalogue.create` | Create product/service catalogue record | `A` (2026-11-24) | `catalogue.created` |
+| `catalogue.edit` | Edit catalogue fields, including activate/deactivate | `A` (2026-11-24) | `catalogue.updated` / `catalogue.activated` / `catalogue.deactivated` |
+| `catalogue.delete` | Hard delete catalogue record | `D` — deactivate only in Phase 10; referenced records must never be unsafely deleted | Not permitted |
+
+Role grants (Phase 10): Owner/Admin=`catalogue.view,catalogue.create,catalogue.edit`; Operator=`catalogue.view,catalogue.create,catalogue.edit`; Accountant/Reviewer=`catalogue.view`; Viewer=`catalogue.view`. Export/print/cancel/approve/post remain denied for all roles.
 
 ## 4. Role matrix — approved baseline only
 

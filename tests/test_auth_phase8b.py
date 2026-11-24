@@ -390,6 +390,9 @@ EXPECTED_GRANTS = {
         PermissionKey.PARTY_VIEW,
         PermissionKey.PARTY_CREATE,
         PermissionKey.PARTY_EDIT,
+        PermissionKey.CATALOGUE_VIEW,
+        PermissionKey.CATALOGUE_CREATE,
+        PermissionKey.CATALOGUE_EDIT,
     },
     RoleKey.OPERATOR: {
         PermissionKey.LOGOUT,
@@ -398,18 +401,23 @@ EXPECTED_GRANTS = {
         PermissionKey.PARTY_VIEW,
         PermissionKey.PARTY_CREATE,
         PermissionKey.PARTY_EDIT,
+        PermissionKey.CATALOGUE_VIEW,
+        PermissionKey.CATALOGUE_CREATE,
+        PermissionKey.CATALOGUE_EDIT,
     },
     RoleKey.ACCOUNTANT_REVIEWER: {
         PermissionKey.LOGOUT,
         PermissionKey.UNLOCK,
         PermissionKey.PASSWORD_CHANGE_SELF,
         PermissionKey.PARTY_VIEW,
+        PermissionKey.CATALOGUE_VIEW,
     },
     RoleKey.VIEWER: {
         PermissionKey.LOGOUT,
         PermissionKey.UNLOCK,
         PermissionKey.PASSWORD_CHANGE_SELF,
         PermissionKey.PARTY_VIEW,
+        PermissionKey.CATALOGUE_VIEW,
     },
 }
 

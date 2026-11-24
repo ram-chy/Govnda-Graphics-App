@@ -51,6 +51,8 @@ def test_navigation_entries_and_default_view(window: MainWindow) -> None:
         "inventory",
         "customers",
         "suppliers",
+        "products",
+        "services",
         "expenses",
         "accounting",
         "reports",

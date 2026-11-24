@@ -12,12 +12,14 @@ from app.infrastructure.database.models.business_profile import (
     BusinessProfileRecord,
     BusinessProfileVersionRecord,
 )
+from app.infrastructure.database.models.catalogue import CatalogueItemRecord
 from app.infrastructure.database.models.party import PartyRecord
 
 __all__ = [
     "AuditEventRecord",
     "BusinessProfileRecord",
     "BusinessProfileVersionRecord",
+    "CatalogueItemRecord",
     "LoginThrottleRecord",
     "PartyRecord",
     "RoleRecord",

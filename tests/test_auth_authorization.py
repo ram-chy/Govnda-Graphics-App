@@ -30,12 +30,16 @@ OPERATOR_PERMISSIONS = frozenset(
         PermissionKey.PARTY_VIEW,
         PermissionKey.PARTY_CREATE,
         PermissionKey.PARTY_EDIT,
+        PermissionKey.CATALOGUE_VIEW,
+        PermissionKey.CATALOGUE_CREATE,
+        PermissionKey.CATALOGUE_EDIT,
     }
 )
 REVIEWER_OR_VIEWER_PERMISSIONS = frozenset(
     {
         *SELF_SERVICE,
         PermissionKey.PARTY_VIEW,
+        PermissionKey.CATALOGUE_VIEW,
     }
 )
 

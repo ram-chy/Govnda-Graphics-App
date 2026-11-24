@@ -22,11 +22,13 @@ from PySide6.QtWidgets import (
 from app.core import constants
 from app.core.config import ConfigService
 from app.domain.auth import SESSION_ENTITY_TYPE, AuthEventType, actor_for_user
+from app.domain.catalogue import CatalogueKind
 from app.domain.party import PartyKind
 from app.services.auth_services import AuthServices
 from app.services.auth_support import actor_payload
 from app.services.backup_workspace import BackupWorkspaceFactory
 from app.services.business_profile_service import BusinessProfileServiceFactory
+from app.services.catalogue_service import CatalogueServiceFactory
 from app.services.database_runtime import DatabaseRuntime
 from app.services.party_service import PartyServiceFactory
 from app.ui.components.placeholder_view import PlaceholderView
@@ -43,10 +45,12 @@ from app.ui.themes.manager import ThemeManager
 from app.ui.themes.tokens import METRICS
 from app.ui.viewmodels.backup_viewmodel import BackupSnapshot, BackupViewModel
 from app.ui.viewmodels.business_profile_viewmodel import BusinessProfileViewModel
+from app.ui.viewmodels.catalogue_viewmodel import CatalogueViewModel
 from app.ui.viewmodels.party_viewmodel import PartyViewModel
 from app.ui.viewmodels.shell_viewmodel import ShellViewModel
 from app.ui.views.backup_view import BackupView
 from app.ui.views.business_profile_view import BusinessProfileView
+from app.ui.views.catalogue_view import CatalogueView
 from app.ui.views.home_view import HomeView
 from app.ui.views.party_view import PartyView
 
@@ -70,6 +74,13 @@ NAVIGATION_GROUPS: tuple[NavGroup, ...] = (
         items=(
             NavItem("customers", "Customers", "Customer records and statements - Phase 7"),
             NavItem("suppliers", "Suppliers", "Supplier records and balances - Phase 7"),
+        ),
+    ),
+    NavGroup(
+        title="Catalogue",
+        items=(
+            NavItem("products", "Products", "Product catalogue records - Phase 10"),
+            NavItem("services", "Services", "Service catalogue records - Phase 10"),
         ),
     ),
     NavGroup(
@@ -110,6 +121,7 @@ class MainWindow(QMainWindow):
         workspace_factory: BackupWorkspaceFactory | None = None,
         business_profile_factory: BusinessProfileServiceFactory | None = None,
         party_factory: PartyServiceFactory | None = None,
+        catalogue_factory: CatalogueServiceFactory | None = None,
         auth_services: AuthServices | None = None,
         settings: QSettings | None = None,
         parent: QWidget | None = None,
@@ -129,6 +141,7 @@ class MainWindow(QMainWindow):
         self._backup_status: QLabel | None = None
         self._business_profile_viewmodel: BusinessProfileViewModel | None = None
         self._party_factory = party_factory
+        self._catalogue_factory = catalogue_factory
         self._auth_services = auth_services
         self._lock_dialog: LockDialog | None = None
         if business_profile_factory is not None:
@@ -511,6 +524,11 @@ class MainWindow(QMainWindow):
             vm = PartyViewModel(kind, self._party_factory, parent=self)
             vm.status_message.connect(self._show_status_message)
             return PartyView(vm, self)
+        if key in {"products", "services"} and self._catalogue_factory is not None:
+            kind = CatalogueKind.PRODUCT if key == "products" else CatalogueKind.SERVICE
+            vm = CatalogueViewModel(kind, self._catalogue_factory, parent=self)
+            vm.status_message.connect(self._show_status_message)
+            return CatalogueView(vm, self)
         return PlaceholderView(item.label, item.subtitle, self)
 
     def _build_home_view(self) -> HomeView:

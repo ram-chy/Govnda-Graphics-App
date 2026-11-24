@@ -363,6 +363,7 @@ def run(argv: list[str] | None = None) -> int:
             workspace_factory=context.workspace_factory,
             business_profile_factory=context.business_profile_factory,
             party_factory=context.party_factory,
+            catalogue_factory=context.catalogue_factory,
             auth_services=auth,
         )
         window.show()

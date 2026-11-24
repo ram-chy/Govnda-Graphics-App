@@ -3,13 +3,13 @@
 | Field | Value |
 | --- | --- |
 | Document | DATABASE_SCHEMA.md |
-| Version | 1.6 |
-| Date | 2026-11-20; Phase 7B-1 audit retention corrected 2026-11-21; Phase 8B authentication added 2026-11-23 |
-| Status | Phase 7B profile/version/audit tables and Phase 8B authentication tables implemented; all other business tables remain proposed |
+| Version | 1.7 |
+| Date | 2026-11-20; Phase 7B-1 audit retention corrected 2026-11-21; Phase 8B authentication added 2026-11-23; Phase 9 party master and Phase 10 catalogue master added 2026-11-24 |
+| Status | Phase 7B profile/version/audit, Phase 8B authentication, Phase 9 party master, and Phase 10 catalogue master tables implemented; other business tables remain proposed |
 | Related | BLUEPRINT.md, ARCHITECTURE.md, BACKUP_STRATEGY.md |
-| Schema baseline | `0001_baseline`, `0002_business_profile`, `0003_business_profile_requirements`, and implemented `0004_authentication` |
+| Schema baseline | `0001_baseline` through implemented `0006_catalogue_master` |
 
-> **Important:** The implemented profile slice now comprises `business_profile`, `business_profile_versions`, and `audit_events`. Phase 2 created only Alembic's `alembic_version` table plus the SQLite file-identity PRAGMAs; Phase 7A added `business_profile`; Phase 7B corrects it with migration `0003_business_profile_requirements`; Phase 8B adds the `roles`, `users`, and `login_throttles` authentication tables in migration `0004_authentication`. Every other business table in this document is **proposed**. Tables for unconfirmed workflows are marked **[PROVISIONAL]** and must not be created during initialization.
+> **Important:** Implemented tables now include `business_profile`, `business_profile_versions`, `audit_events`, `roles`, `users`, `login_throttles`, `parties`, and `catalogue_items`. Phase 2 created only Alembic's `alembic_version` table plus the SQLite file-identity PRAGMAs; Phase 7A added `business_profile`; Phase 7B corrected it with migration `0003_business_profile_requirements`; Phase 8B added authentication tables in `0004_authentication`; Phase 9 added `parties` in `0005_party_master`; Phase 10 added `catalogue_items` in `0006_catalogue_master`. Every other business table in this document is **proposed**. Tables for unconfirmed workflows are marked **[PROVISIONAL]** and must not be created during initialization.
 
 ## Phase 7B implemented schema correction (authoritative)
 
@@ -182,11 +182,12 @@ line_total_minor = line_net_minor + line_tax_minor
 | Table | Purpose | Status |
 | --- | --- | --- |
 | `parties` | Customer/Supplier basic master records (shared table, `party_kind`) | Implemented in Phase 9 (2026-11-23) |
+| `catalogue_items` | Product/Service basic master records (shared table, `kind`) | Implemented in Phase 10 (2026-11-24) |
 | `customers` | Customer records and credit terms (future transaction-facing extension) | Proposed; Phase 9 uses `parties` for basic master slice |
 | `suppliers` | Supplier records (future transaction-facing extension) | Proposed; Phase 9 uses `parties` for basic master slice |
 | `product_categories` | Hierarchical categories | Proposed |
 | `units` | Unit of measure and decimal precision | Proposed |
-| `products` | Goods/services, pricing, tax defaults | Proposed |
+| `products` | Goods/services, pricing, tax defaults | Proposed; Phase 10 uses `catalogue_items` for minimal master slice |
 | `product_units` | Product-specific unit conversions | Proposed |
 
 ### 6.3 Sales
@@ -312,6 +313,28 @@ Phase 9 implements a shared basic master table for customers and suppliers. Fina
 - Duplicate policy (owner-approved 2026-11-23): warn on case-insensitive normalized name match; also warn on matching phone for existing active record when phone provided; save allowed only after explicit confirmation.
 - Lifecycle: activate/deactivate supported; hard delete not exposed in normal UI; referenced records must never be unsafely deleted.
 - Audit: append-only `audit_events` rows with `entity_type='party'` and event types `party.created`, `party.updated`, `party.activated`, `party.deactivated`.
+
+### 7.4b `catalogue_items` (implemented, Phase 10 Product & Service Catalogue)
+
+Phase 10 implements a shared basic master table for products and services. Stock quantities, variants, barcodes, multiple price lists, tax, discounts/commissions, transactions, invoices, payments, and accounting are intentionally out of scope.
+
+| Column | Type | Constraints |
+| --- | --- | --- |
+| `id` | INTEGER | PK AUTOINCREMENT |
+| `kind` | TEXT | NOT NULL, CHECK IN (`product`,`service`) |
+| `name` | TEXT | NOT NULL, trimmed non-empty |
+| `name_key` | TEXT | NOT NULL, normalized case-insensitive name key |
+| `description` | TEXT | NOT NULL DEFAULT `''` |
+| `unit` | TEXT | NOT NULL DEFAULT `''` (simple text, no unit master) |
+| `default_sale_price_minor` | INTEGER | NULL; CHECK `>= 0` when present; reference/default INR paise only |
+| `is_active` | BOOLEAN/INTEGER | NOT NULL DEFAULT 1, CHECK IN (0,1) |
+| `created_at` | TEXT | NOT NULL, ISO-8601 UTC |
+| `updated_at` | TEXT | NOT NULL, ISO-8601 UTC |
+
+- Indexes: `(kind, name_key)`, `(kind, is_active)`.
+- Duplicate policy (owner-approved 2026-11-24): warn on case-insensitive normalized name match within same kind; save allowed only after explicit confirmation.
+- Lifecycle: activate/deactivate supported; hard delete not exposed in normal UI; referenced records must never be unsafely deleted.
+- Audit: append-only `audit_events` rows with `entity_type='catalogue'` and event types `catalogue.created`, `catalogue.updated`, `catalogue.activated`, `catalogue.deactivated`.
 
 ### 7.4a `customers` (proposed future transaction shape; suppliers mirror)
 
